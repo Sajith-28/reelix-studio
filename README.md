@@ -111,4 +111,6 @@ To enable Cloud Sync and Project Persistence:
 
 ## 📄 License
 
-Distributed under the MIT License. Built for the **Frontier School of Technology Build Sprint**.
+## 📄 License
+
+This project was developed as part of the **Frontier School of Technology AI Native Mentor Build Sprint**.
