@@ -2,7 +2,6 @@
 
 > **Build Sprint Submission** for **AI Native Mentor (Intern) — Frontier School of Technology / FACE Prep**  
 > **Developer**: Sajith ([@Sajith-28](https://github.com/Sajith-28))  
-> **Repository**: [https://github.com/Sajith-28/reelix-studio](https://github.com/Sajith-28/reelix-studio)
 
 ---
 
