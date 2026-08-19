@@ -109,7 +109,6 @@ To enable Cloud Sync and Project Persistence:
 
 ---
 
-## 📄 License
 
 ## 📄 License
 
