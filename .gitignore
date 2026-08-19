@@ -1,0 +1,40 @@
+# Environment & Secrets (NEVER COMMIT)
+.env
+.env.local
+.env.*.local
+
+# Heavy Raw Font Archives
+fonts sublyx/
+
+# Media Uploads, Exports & Temp Media
+backend/uploads/*.mp4
+backend/uploads/*.webm
+backend/uploads/*.mov
+backend/exports/*.mp4
+backend/exports/*.ass
+backend/temp/*
+*.mp4
+*.wav
+*.ass
+
+# Python Caches & Environments
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Node Modules & Builds
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+
+# IDE & System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
