@@ -1,9 +1,17 @@
 /**
  * SUBLYX — Style Inspector Component
- * Right panel inspector with custom font selectors, templates (Hormozi, Kalakaar Glow, Ali Abdaal), transitions, and AI Magic
+ * Right panel inspector with font selectors, the template library, transitions, and AI Magic
  */
 
 import { useState } from 'react';
+import {
+  TEMPLATE_PRESETS,
+  TEMPLATE_CATEGORIES,
+  templateToStyle,
+  buildShadowFilter,
+  buildWordStyle,
+  applyTextTransform,
+} from '../lib/captionStyle';
 
 const CUSTOM_FONTS = [
   { name: 'Montserrat (Viral Reels)', family: 'Montserrat' },
@@ -28,198 +36,6 @@ const QUICK_COLORS = [
   { name: 'Purple', hex: '#a855f7' },
 ];
 
-const TEMPLATE_PRESETS = [
-  {
-    id: 'inverted_diff',
-    name: '🌓 Inverted Pixel Blend (Difference)',
-    fontFamily: 'Anton',
-    fontSize: 32,
-    color: '#ffffff',
-    highlightColor: '#ffffff',
-    backgroundColor: 'transparent',
-    strokeWidth: 2,
-    strokeColor: '#000000',
-    shadowType: 'hard',
-    shadowBlur: 4,
-    shadowOpacity: 0.5,
-    shadowDistance: 2,
-    mixBlendMode: 'difference',
-    flipH: false,
-    borderStyle: 1,
-    position: 'bottom',
-    yPercent: 82,
-    transition: 'Pop Up',
-  },
-  {
-    id: 'inverted_box',
-    name: '⬛ High-Contrast Inverted Box',
-    fontFamily: 'Anton',
-    fontSize: 30,
-    color: '#ffffff',
-    highlightColor: '#facc15',
-    backgroundColor: '#000000',
-    strokeWidth: 0,
-    strokeColor: '#000000',
-    shadowType: 'cinematic',
-    shadowBlur: 14,
-    shadowOpacity: 0.9,
-    shadowDistance: 4,
-    mixBlendMode: 'normal',
-    flipH: false,
-    borderStyle: 3,
-    position: 'bottom',
-    yPercent: 82,
-    transition: 'Pop Up',
-  },
-  {
-    id: 'knockout_box',
-    name: '🎞️ Knockout Cutout Box (Hormozi)',
-    fontFamily: 'Anton',
-    fontSize: 32,
-    color: '#ffffff',
-    highlightColor: '#facc15',
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-    strokeWidth: 2,
-    strokeColor: '#ffffff',
-    shadowType: 'none',
-    shadowBlur: 0,
-    shadowOpacity: 0,
-    shadowDistance: 0,
-    mixBlendMode: 'screen',
-    flipH: false,
-    borderStyle: 3,
-    position: 'bottom',
-    yPercent: 82,
-    transition: 'Pop Up',
-  },
-  {
-    id: 'mirrored_flip',
-    name: '🪞 Mirrored / Flipped (Horizontal)',
-    fontFamily: 'Anton',
-    fontSize: 30,
-    color: '#ffffff',
-    highlightColor: '#facc15',
-    backgroundColor: 'transparent',
-    strokeWidth: 3.5,
-    strokeColor: '#000000',
-    shadowType: 'cinematic',
-    shadowBlur: 14,
-    shadowOpacity: 0.9,
-    shadowDistance: 4,
-    mixBlendMode: 'normal',
-    flipH: true,
-    borderStyle: 1,
-    position: 'bottom',
-    yPercent: 82,
-    transition: 'Pop Up',
-  },
-  {
-    id: 'hormozi',
-    name: '🔥 Hormozi Viral Punch',
-    fontFamily: 'Anton',
-    fontSize: 32,
-    color: '#ffffff',
-    highlightColor: '#facc15',
-    backgroundColor: 'transparent',
-    strokeWidth: 4,
-    strokeColor: '#000000',
-    shadowType: 'cinematic',
-    shadowBlur: 16,
-    shadowOpacity: 0.95,
-    shadowDistance: 5,
-    mixBlendMode: 'normal',
-    flipH: false,
-    borderStyle: 1,
-    position: 'bottom',
-    yPercent: 82,
-    transition: 'Pop Up',
-  },
-  {
-    id: 'glow',
-    name: '✨ After Effects Deep Glow',
-    fontFamily: 'Montserrat',
-    fontSize: 28,
-    color: '#ffffff',
-    highlightColor: '#10b981',
-    backgroundColor: 'transparent',
-    strokeWidth: 3,
-    strokeColor: '#000000',
-    shadowType: 'glow',
-    shadowBlur: 20,
-    shadowOpacity: 1,
-    shadowDistance: 0,
-    mixBlendMode: 'normal',
-    flipH: false,
-    borderStyle: 1,
-    position: 'bottom',
-    yPercent: 82,
-    transition: 'Zoom Kinetic',
-  },
-  {
-    id: 'beast',
-    name: '⚡ MrBeast YouTube Bold',
-    fontFamily: 'Rubik',
-    fontSize: 30,
-    color: '#ffffff',
-    highlightColor: '#00e5ff',
-    backgroundColor: 'transparent',
-    strokeWidth: 4,
-    strokeColor: '#000000',
-    shadowType: 'hard',
-    shadowBlur: 8,
-    shadowOpacity: 0.9,
-    shadowDistance: 4,
-    mixBlendMode: 'normal',
-    flipH: false,
-    borderStyle: 1,
-    position: 'bottom',
-    yPercent: 82,
-    transition: 'Pop Up',
-  },
-  {
-    id: 'abdaal',
-    name: '📦 Ali Abdaal Studio Box',
-    fontFamily: 'Plus Jakarta Sans',
-    fontSize: 26,
-    color: '#ffffff',
-    highlightColor: '#38bdf8',
-    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-    strokeWidth: 2,
-    strokeColor: '#000000',
-    shadowType: 'cinematic',
-    shadowBlur: 12,
-    shadowOpacity: 0.8,
-    shadowDistance: 3,
-    mixBlendMode: 'normal',
-    flipH: false,
-    borderStyle: 3,
-    position: 'bottom',
-    yPercent: 82,
-    transition: 'Fade In',
-  },
-  {
-    id: 'minimal',
-    name: '🎬 Cinema Clean Minimal',
-    fontFamily: 'Outfit',
-    fontSize: 24,
-    color: '#f8fafc',
-    highlightColor: '#facc15',
-    backgroundColor: 'transparent',
-    strokeWidth: 2.5,
-    strokeColor: '#000000',
-    shadowType: 'cinematic',
-    shadowBlur: 14,
-    shadowOpacity: 0.85,
-    shadowDistance: 4,
-    mixBlendMode: 'normal',
-    flipH: false,
-    borderStyle: 1,
-    position: 'bottom',
-    yPercent: 82,
-    transition: 'None',
-  },
-];
-
 export default function StyleInspector({
   styleConfig,
   onUpdateStyle,
@@ -229,7 +45,14 @@ export default function StyleInspector({
   onUppercaseAll,
 }) {
   const [activeTab, setActiveTab] = useState('Text'); // Text, VFX & Shadow, Templates, Transitions, AI Magic
+  const [templateCategory, setTemplateCategory] = useState('all');
   const [magicNotice, setMagicNotice] = useState(null);
+
+  const visibleTemplates =
+    templateCategory === 'all'
+      ? TEMPLATE_PRESETS
+      : TEMPLATE_PRESETS.filter((t) => t.category === templateCategory);
+  const activeCategoryHint = TEMPLATE_CATEGORIES.find((c) => c.id === templateCategory)?.hint;
 
   const triggerNotice = (msg) => {
     setMagicNotice(msg);
@@ -662,65 +485,55 @@ export default function StyleInspector({
 
         {activeTab === 'Templates' && (
           <div className="space-y-3">
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-              Preset Studio Templates
+            {/* Category Filter Chips */}
+            <div className="flex flex-wrap gap-1.5">
+              {[{ id: 'all', label: 'All' }, ...TEMPLATE_CATEGORIES].map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setTemplateCategory(cat.id)}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${
+                    templateCategory === cat.id
+                      ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                      : 'bg-slate-800 text-slate-400 border-slate-700/60 hover:text-slate-200'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
             </div>
-            {TEMPLATE_PRESETS.map((tpl) => {
-              const isSelectedTpl =
-                styleConfig.fontFamily === tpl.fontFamily &&
-                styleConfig.strokeWidth === tpl.strokeWidth &&
-                styleConfig.shadowType === tpl.shadowType;
 
+            {activeCategoryHint && (
+              <p className="text-[11px] text-slate-400 leading-snug">{activeCategoryHint}</p>
+            )}
+
+            {visibleTemplates.map((tpl) => {
+              const isSelectedTpl = styleConfig.templateId === tpl.id;
               return (
                 <div
                   key={tpl.id}
-                  onClick={() => onApplyTemplate(tpl)}
-                  className={`p-3 bg-slate-800/80 hover:bg-slate-800 border rounded-xl transition-all cursor-pointer group ${
+                  onClick={() => onApplyTemplate({ ...templateToStyle(tpl), templateId: tpl.id })}
+                  className={`p-2.5 bg-slate-800/70 hover:bg-slate-800 border rounded-xl transition-all cursor-pointer group ${
                     isSelectedTpl
-                      ? 'border-emerald-500 ring-1 ring-emerald-500/40 bg-slate-800 shadow-md'
-                      : 'border-slate-700/60 hover:border-emerald-500/80'
+                      ? 'border-emerald-500 ring-1 ring-emerald-500/40 shadow-md'
+                      : 'border-slate-700/60 hover:border-emerald-500/70'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-xs font-bold text-slate-200 group-hover:text-emerald-400">
+                  <div className="flex items-center justify-between mb-2 gap-2">
+                    <div className="text-[11px] font-bold text-slate-200 group-hover:text-emerald-400 truncate">
                       {tpl.name}
                     </div>
-                    <span
-                      className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0"
-                      style={{ backgroundColor: tpl.highlightColor }}
-                    />
+                    {isSelectedTpl && (
+                      <span className="text-[9px] font-bold text-emerald-400 shrink-0">ACTIVE</span>
+                    )}
                   </div>
 
-                  {/* Live Visual Text Typography Sample */}
-                  <div className="bg-slate-950/80 rounded-lg py-3 px-2 flex items-center justify-center overflow-hidden border border-slate-800">
-                    <span
-                      className="text-center font-black uppercase tracking-wide leading-none select-none"
-                      style={{
-                        fontFamily: tpl.fontFamily,
-                        fontSize: '18px',
-                        color: tpl.color || '#ffffff',
-                        backgroundColor: tpl.backgroundColor || 'transparent',
-                        WebkitTextStroke: `${tpl.strokeWidth || 0}px ${tpl.strokeColor || '#000000'}`,
-                        paintOrder: 'stroke fill',
-                        filter:
-                          tpl.shadowType === 'glow'
-                            ? `drop-shadow(0 0 8px ${tpl.highlightColor})`
-                            : tpl.shadowType === 'hard'
-                            ? `drop-shadow(${tpl.shadowDistance || 3}px ${tpl.shadowDistance || 3}px 0 ${tpl.shadowColor || '#000000'})`
-                            : tpl.shadowType === 'none'
-                            ? 'none'
-                            : `drop-shadow(0 3px 6px rgba(0,0,0,0.85))`,
-                        transform: tpl.flipH ? 'scaleX(-1)' : 'none',
-                        mixBlendMode: tpl.mixBlendMode || 'normal',
-                      }}
-                    >
-                      VIRAL <span style={{ color: tpl.highlightColor }}>REELS</span>
+                  <TemplateThumbnail tpl={tpl} />
+
+                  <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono mt-1.5 gap-2">
+                    <span className="truncate">{tpl.fontFamily}</span>
+                    <span className="shrink-0">
+                      {tpl.karaoke ? 'karaoke' : 'static'} &middot; {tpl.highlightMode}
                     </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-2">
-                    <span>{tpl.fontFamily}</span>
-                    <span>Stroke: {tpl.strokeWidth}px &middot; {tpl.shadowType}</span>
                   </div>
                 </div>
               );
@@ -824,3 +637,52 @@ export default function StyleInspector({
   );
 }
 
+
+/**
+ * Miniature live render of a template, drawn with the same style helpers the
+ * video overlay uses. The middle word is shown in its "currently spoken" state
+ * so karaoke boxes and highlight colours are visible before you apply it.
+ */
+function TemplateThumbnail({ tpl }) {
+  const words = ['MAKE', 'IT', 'VIRAL'];
+  const hasCard = tpl.borderStyle === 3 && tpl.backgroundColor && tpl.backgroundColor !== 'transparent';
+
+  return (
+    <div className="relative h-[70px] rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center bg-[linear-gradient(125deg,#1d2b4a_0%,#6b4b8a_45%,#c98a5b_100%)]">
+      {/* Faux subject shape so difference-blend templates read correctly */}
+      <div className="absolute inset-y-0 left-1/2 w-14 -translate-x-1/2 bg-slate-100/25 blur-[2px]" />
+
+      <div
+        className="relative z-10 text-center px-1"
+        style={{
+          fontFamily: tpl.fontFamily,
+          fontSize: '13px',
+          lineHeight: tpl.lineHeight ?? 1.05,
+          mixBlendMode: tpl.mixBlendMode || 'normal',
+          transform: tpl.flipH ? 'scaleX(-1)' : 'none',
+          backgroundColor: hasCard ? tpl.backgroundColor : 'transparent',
+          borderRadius: hasCard ? `${Math.round((tpl.bgRadius ?? 0) * 0.6)}px` : 0,
+          padding: hasCard ? '4px 8px' : 0,
+          filter: buildShadowFilter({ ...tpl, shadowBlur: (tpl.shadowBlur ?? 14) * 0.45, shadowDistance: (tpl.shadowDistance ?? 4) * 0.45 }),
+        }}
+      >
+        <div className="flex flex-wrap justify-center items-center gap-x-1 gap-y-0.5 font-black">
+          {words.map((w, i) => (
+            <span
+              key={w}
+              style={{
+                ...buildWordStyle(tpl, { isActive: i === 1 }),
+                WebkitTextStroke:
+                  (tpl.strokeWidth ?? 0) > 0 && !(i === 1 && tpl.highlightMode === 'box')
+                    ? `${Math.max(0.5, (tpl.strokeWidth ?? 0) * 0.45)}px ${tpl.strokeColor || '#000000'}`
+                    : '0',
+              }}
+            >
+              {applyTextTransform(w, tpl.textTransform)}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

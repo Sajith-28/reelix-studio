@@ -2,6 +2,11 @@
 .env
 .env.local
 .env.*.local
+_env
+
+# Archives & Binaries
+*.zip
+*.tar.gz
 
 # Heavy Raw Font Archives
 fonts sublyx/

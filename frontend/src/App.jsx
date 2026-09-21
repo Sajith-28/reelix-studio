@@ -11,47 +11,45 @@ import VideoPreview from './components/VideoPreview';
 import Timeline from './components/Timeline';
 import StyleInspector from './components/StyleInspector';
 import RenderingProgressModal from './components/RenderingProgressModal';
+import { TEMPLATE_PRESETS, templateToStyle } from './lib/captionStyle';
 import './App.css';
 
-const DEFAULT_STYLE = {
-  fontFamily: 'Montserrat',
-  fontSize: 28,
-  color: '#ffffff',
-  highlightColor: '#facc15', // Vibrant Viral Yellow
-  backgroundColor: 'transparent',
-  position: 'bottom',
-  xPercent: 50,
-  yPercent: 82,
-  yOffset: 0,
-  strokeWidth: 3.5,
-  strokeColor: '#000000',
-  shadowType: 'cinematic',
-  shadowBlur: 14,
-  shadowOpacity: 0.9,
-  shadowColor: '#000000',
-  shadowDistance: 4,
-};
+const DEFAULT_STYLE = { ...templateToStyle(TEMPLATE_PRESETS[0]), templateId: TEMPLATE_PRESETS[0].id };
 
 export default function App() {
   // ── Session Persistence: restore from sessionStorage on mount ──
   const [project, setProject] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('sublyx_project');
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
+      const saved = sessionStorage.getItem('reelix_project') || sessionStorage.getItem('sublyx_project');
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (parsed && Array.isArray(parsed.captions) && parsed.captions.length > 0) {
+        return parsed;
+      }
+      // Clear corrupt or empty saved state
+      sessionStorage.removeItem('reelix_project');
+      sessionStorage.removeItem('sublyx_project');
+      return null;
+    } catch {
+      return null;
+    }
   });
   const [projectName, setProjectName] = useState(() => {
-    return sessionStorage.getItem('sublyx_projectName') || 'NEUBIES EDIT 2';
+    return sessionStorage.getItem('reelix_projectName') || sessionStorage.getItem('sublyx_projectName') || 'NEUBIES EDIT 2';
   });
 
   // Video Playback State
   const [currentTime, setCurrentTime] = useState(() => {
-    const saved = sessionStorage.getItem('sublyx_currentTime');
-    return saved ? parseFloat(saved) : 0;
+    try {
+      const saved = sessionStorage.getItem('reelix_currentTime') || sessionStorage.getItem('sublyx_currentTime');
+      return saved ? parseFloat(saved) : 0;
+    } catch { return 0; }
   });
   const [duration, setDuration] = useState(() => {
-    const saved = sessionStorage.getItem('sublyx_duration');
-    return saved ? parseFloat(saved) : 0;
+    try {
+      const saved = sessionStorage.getItem('reelix_duration') || sessionStorage.getItem('sublyx_duration');
+      return saved ? parseFloat(saved) : 0;
+    } catch { return 0; }
   });
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -59,16 +57,29 @@ export default function App() {
 
   // Active Subtitle Line & Styling State
   const [selectedCaptionId, setSelectedCaptionId] = useState(() => {
-    const saved = sessionStorage.getItem('sublyx_selectedCaptionId');
-    return saved ? parseInt(saved) : null;
+    try {
+      const saved = sessionStorage.getItem('reelix_selectedCaptionId') || sessionStorage.getItem('sublyx_selectedCaptionId');
+      return saved ? parseInt(saved) : null;
+    } catch { return null; }
   });
   const [selectedWord, setSelectedWord] = useState(null); // { captionId, wordIndex, wordText }
   const [styleConfig, setStyleConfig] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('sublyx_styleConfig');
+      const saved = sessionStorage.getItem('reelix_styleConfig') || sessionStorage.getItem('sublyx_styleConfig');
       return saved ? JSON.parse(saved) : DEFAULT_STYLE;
     } catch { return DEFAULT_STYLE; }
   });
+
+  // Sync state to sessionStorage whenever project or key settings change
+  useEffect(() => {
+    try {
+      if (project && Array.isArray(project.captions) && project.captions.length > 0) {
+        sessionStorage.setItem('reelix_project', JSON.stringify(project));
+      }
+    } catch (e) {
+      console.warn('Session persistence notice:', e);
+    }
+  }, [project]);
 
   // Upload Processing & Export States
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
@@ -106,7 +117,7 @@ export default function App() {
       // Persist to local backup
       localStorage.setItem('sublyx_saved_project', JSON.stringify({ ...project, ...payload }));
 
-      const res = await fetch('http://localhost:8000/api/supabase/save-project', {
+      const res = await fetch('/api/supabase/save-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -233,15 +244,35 @@ export default function App() {
       setUploadStage('Translating into Instagram Reels format...');
       const data = await res.json();
 
-      setProject(data);
-      setDuration(data.duration || 0);
-      setProjectName(file.name.replace(/\.[^/.]+$/, '') + ' - EDIT');
-      pushHistory(data.captions);
+      const rawCaptions = Array.isArray(data?.captions) ? data.captions : [];
+      const sanitizedCaptions = rawCaptions.map((c, idx) => ({
+        id: c?.id ?? idx + 1,
+        start: typeof c?.start === 'number' ? c.start : 0,
+        end: typeof c?.end === 'number' ? c.end : 0,
+        source_text: typeof c?.source_text === 'string' ? c.source_text : '',
+        translated_text: typeof c?.translated_text === 'string' ? c.translated_text : (c?.text || ''),
+        keywords: Array.isArray(c?.keywords) ? c.keywords.filter((k) => typeof k === 'string') : [],
+        words: Array.isArray(c?.words) ? c.words : [],
+      }));
 
-      if (data.captions?.length > 0) {
-        setSelectedCaptionId(data.captions[0].id);
+      const sanitizedProject = {
+        ...data,
+        video_url: data?.video_url || '',
+        video_filename: data?.video_filename || file.name,
+        duration: typeof data?.duration === 'number' ? data.duration : 0,
+        captions: sanitizedCaptions,
+      };
+
+      setProject(sanitizedProject);
+      setDuration(sanitizedProject.duration || 0);
+      setProjectName(file.name.replace(/\.[^/.]+$/, '') + ' - EDIT');
+      pushHistory(sanitizedCaptions);
+
+      if (sanitizedCaptions.length > 0) {
+        setSelectedCaptionId(sanitizedCaptions[0].id);
       }
     } catch (err) {
+      console.error('Upload & caption processing error:', err);
       setUploadError(err.message || 'Video processing failed.');
     } finally {
       setIsProcessingUpload(false);
@@ -631,12 +662,14 @@ export default function App() {
   };
 
   // Find active caption matching current video playback time
-  const currentCaption = project?.captions.find(
-    (c) => currentTime >= c.start && currentTime <= c.end
-  );
+  const currentCaption = Array.isArray(project?.captions)
+    ? project.captions.find(
+        (c) => c && typeof c.start === 'number' && typeof c.end === 'number' && currentTime >= c.start && currentTime <= c.end
+      )
+    : null;
 
-  // Render Upload Screen if no project is loaded
-  if (!project) {
+  // Render Upload Screen if no valid project is loaded
+  if (!project || !Array.isArray(project.captions)) {
     return (
       <UploadScreen
         onUploadStart={handleUploadStart}
@@ -667,12 +700,13 @@ export default function App() {
         lastSavedTime={lastSavedTime}
         onNewProject={() => {
           // Clear session persistence so the user starts fresh
-          sessionStorage.removeItem('reelix_project');
-          sessionStorage.removeItem('reelix_projectName');
-          sessionStorage.removeItem('reelix_currentTime');
-          sessionStorage.removeItem('reelix_duration');
-          sessionStorage.removeItem('reelix_selectedCaptionId');
-          sessionStorage.removeItem('reelix_styleConfig');
+          try {
+            ['reelix_project', 'reelix_projectName', 'reelix_currentTime', 'reelix_duration', 'reelix_selectedCaptionId', 'reelix_styleConfig',
+             'sublyx_project', 'sublyx_projectName', 'sublyx_currentTime', 'sublyx_duration', 'sublyx_selectedCaptionId', 'sublyx_styleConfig'
+            ].forEach((k) => sessionStorage.removeItem(k));
+          } catch (e) {
+            console.warn('Storage cleanup notice:', e);
+          }
           setProject(null);
           setCurrentTime(0);
           setDuration(0);

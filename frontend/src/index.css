@@ -1,10 +1,66 @@
 @import "tailwindcss";
 
-/* Registered Custom Fonts from `fonts sublyx` */
+/* Registered Custom Fonts for REELIX Studio Editor */
 @font-face {
   font-family: 'Anton';
   src: url('/fonts/Anton-Regular.ttf') format('truetype');
-  font-weight: normal;
+  font-weight: 400 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Bebas Neue';
+  src: url('/fonts/BebasNeue-Regular.ttf') format('truetype');
+  font-weight: 400 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Montserrat';
+  src: url('/fonts/Montserrat-Bold.ttf') format('truetype');
+  font-weight: 600 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Rubik';
+  src: url('/fonts/Rubik-Bold.ttf') format('truetype');
+  font-weight: 600 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Outfit';
+  src: url('/fonts/Outfit-Bold.ttf') format('truetype');
+  font-weight: 600 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  src: url('/fonts/PlusJakartaSans-Bold.ttf') format('truetype');
+  font-weight: 600 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Bold.ttf') format('truetype');
+  font-weight: 600 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Oswald';
+  src: url('/fonts/Oswald-Bold.ttf') format('truetype');
+  font-weight: 600 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Syne';
+  src: url('/fonts/Syne-Bold.ttf') format('truetype');
+  font-weight: 600 900;
   font-style: normal;
 }
 
@@ -16,23 +72,9 @@
 }
 
 @font-face {
-  font-family: 'Montserrat';
-  src: url('/fonts/Montserrat-Bold.ttf') format('truetype');
-  font-weight: bold;
-  font-style: normal;
-}
-
-@font-face {
   font-family: 'Playfair Display';
   src: url('/fonts/PlayfairDisplay-Black.ttf') format('truetype');
   font-weight: 900;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Plus Jakarta Sans';
-  src: url('/fonts/PlusJakartaSans-Bold.ttf') format('truetype');
-  font-weight: bold;
   font-style: normal;
 }
 
@@ -87,10 +129,86 @@ body {
   box-shadow: 0 0 20px rgba(16, 185, 129, 0.25);
 }
 
+.glow-accent-lg {
+  box-shadow: 0 0 40px rgba(16, 185, 129, 0.35), 0 0 80px rgba(16, 185, 129, 0.15);
+}
+
+.glow-cyan-lg {
+  box-shadow: 0 0 40px rgba(6, 182, 212, 0.35), 0 0 80px rgba(6, 182, 212, 0.15);
+}
+
 .glow-text-green {
   text-shadow: 0 0 10px rgba(16, 185, 129, 0.6), 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+.glow-text-cyan {
+  text-shadow: 0 0 10px rgba(6, 182, 212, 0.6), 0 0 20px rgba(6, 182, 212, 0.3);
 }
 
 .glow-text-yellow {
   text-shadow: 0 0 10px rgba(245, 158, 11, 0.6), 0 0 20px rgba(245, 158, 11, 0.3);
 }
+
+/* Insane Studio Animations */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spinSlowReverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes pulseLaser {
+  0%, 100% { opacity: 0.4; transform: scale(0.98); }
+  50% { opacity: 1; transform: scale(1.02); filter: drop-shadow(0 0 15px #10b981); }
+}
+
+@keyframes soundwaveBar {
+  0%, 100% { height: 15%; }
+  50% { height: 95%; }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(1000%); }
+}
+
+@keyframes holographicShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 12s linear infinite;
+}
+
+.animate-spin-slow-reverse {
+  animation: spinSlowReverse 8s linear infinite;
+}
+
+.animate-spin-fast-reverse {
+  animation: spinSlowReverse 4s linear infinite;
+}
+
+.animate-pulse-laser {
+  animation: pulseLaser 2.5s ease-in-out infinite;
+}
+
+.shimmer-text {
+  background: linear-gradient(90deg, #10b981 0%, #34d399 25%, #67e8f9 50%, #34d399 75%, #10b981 100%);
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: holographicShimmer 3s linear infinite;
+}
+
+.cyber-grid {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(16, 185, 129, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(16, 185, 129, 0.05) 1px, transparent 1px);
+}
+

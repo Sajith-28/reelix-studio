@@ -6,12 +6,12 @@
 import { useState } from 'react';
 
 export default function CaptionsPanel({
-  captions,
+  captions = [],
   selectedCaptionId,
   selectedWord,
   onSelectWord,
   onMoveWord,
-  currentTime,
+  currentTime = 0,
   onSelectCaption,
   onUpdateCaptionText,
   onUpdateCaptionTiming,
@@ -24,10 +24,12 @@ export default function CaptionsPanel({
 }) {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredCaptions = captions.filter(
+  const safeCaptions = Array.isArray(captions) ? captions : [];
+
+  const filteredCaptions = safeCaptions.filter(
     (c) =>
-      c.translated_text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.source_text && c.source_text.toLowerCase().includes(searchTerm.toLowerCase()))
+      (c?.translated_text || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c?.source_text && c.source_text.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -39,7 +41,7 @@ export default function CaptionsPanel({
             Captions
           </h2>
           <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-emerald-400">
-            {captions.length} lines
+            {safeCaptions.length} lines
           </span>
         </div>
 
@@ -214,17 +216,17 @@ export default function CaptionsPanel({
                 </div>
               )}
 
-              {/* Highlighted Keyword Chips & Word Navigation Controls */}
+                {/* Highlighted Keyword Chips & Word Navigation Controls */}
               <div className="mt-2.5 flex flex-wrap gap-1.5 items-center">
                 <span className="text-[10px] uppercase font-bold text-slate-500 mr-1">Words:</span>
-                {cap.translated_text.split(/\s+/).map((word, wIdx) => {
+                {(cap?.translated_text || '').split(/\s+/).filter(Boolean).map((word, wIdx) => {
                   const cleanWord = word.replace(/[^\w]/g, '');
                   if (!cleanWord) return null;
-                  const isKeyword = cap.keywords?.includes(cleanWord);
+                  const isKeyword = Array.isArray(cap?.keywords) && cap.keywords.includes(cleanWord);
                   const isWordSelected = selectedWord?.captionId === cap.id && selectedWord?.wordIndex === wIdx;
-                  const capIndex = captions.findIndex((c) => c.id === cap.id);
+                  const capIndex = safeCaptions.findIndex((c) => c.id === cap.id);
                   const isFirstCaption = capIndex === 0;
-                  const isLastCaption = capIndex === captions.length - 1;
+                  const isLastCaption = capIndex === safeCaptions.length - 1;
 
                   return (
                     <div key={wIdx} className="relative inline-flex flex-col items-center">

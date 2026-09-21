@@ -157,7 +157,7 @@ export default function EditorHeader({
         <button
           onClick={async () => {
             try {
-              const res = await fetch('http://localhost:8000/api/supabase/status');
+              const res = await fetch('/api/supabase/status');
               const data = await res.json();
               if (data.configured) {
                 alert(`⚡ Supabase Connection Status:\n\n${data.status}`);

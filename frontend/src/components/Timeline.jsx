@@ -6,9 +6,9 @@
 import { useRef, useState } from 'react';
 
 export default function Timeline({
-  captions,
-  currentTime,
-  duration,
+  captions = [],
+  currentTime = 0,
+  duration = 0,
   selectedCaptionId,
   onSelectCaption,
   onSeek,
@@ -18,6 +18,7 @@ export default function Timeline({
 }) {
   const timelineRef = useRef(null);
   const [zoomLevel, setZoomLevel] = useState(1); // 1x to 3x horizontal zoom
+  const safeCaptions = Array.isArray(captions) ? captions : [];
 
   const handleTimelineClick = (e) => {
     if (!timelineRef.current || !duration) return;
@@ -113,7 +114,7 @@ export default function Timeline({
             <div className="text-[10px] font-bold text-emerald-400 px-2 z-10 sticky left-0 bg-slate-900/95 border-r border-slate-800/80">
               CAPTIONS
             </div>
-            {captions.map((cap) => {
+            {safeCaptions.map((cap) => {
               const leftPct = duration ? (cap.start / duration) * 100 : 0;
               const widthPct = duration ? ((cap.end - cap.start) / duration) * 100 : 0;
               const isSelected = cap.id === selectedCaptionId;
@@ -137,9 +138,9 @@ export default function Timeline({
                     left: `${leftPct}%`,
                     width: `${Math.max(widthPct, 0.8)}%`,
                   }}
-                  title={`${cap.translated_text} (${cap.start}s - ${cap.end}s)`}
+                  title={`${cap?.translated_text || ''} (${cap?.start ?? 0}s - ${cap?.end ?? 0}s)`}
                 >
-                  {cap.translated_text}
+                  {cap?.translated_text || ''}
                 </div>
               );
             })}

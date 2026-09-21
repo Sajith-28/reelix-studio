@@ -4,6 +4,12 @@
  */
 
 import { useRef, useEffect, useState } from 'react';
+import {
+  buildShadowFilter,
+  buildWordStyle,
+  applyTextTransform,
+  groupWordsIntoLines,
+} from '../lib/captionStyle';
 
 export default function VideoPreview({
   videoUrl,
@@ -159,13 +165,16 @@ export default function VideoPreview({
 
   // Extract active word in current caption if word timestamps are present
   const wordsList =
-    currentCaption?.words && currentCaption.words.length > 0
+    Array.isArray(currentCaption?.words) && currentCaption.words.length > 0
       ? currentCaption.words
-      : (currentCaption?.translated_text || '').split(/\s+/).map((w) => ({
-          word: w,
-          start: currentCaption?.start || 0,
-          end: currentCaption?.end || 0,
-        }));
+      : (currentCaption?.translated_text || '')
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((w) => ({
+            word: w,
+            start: currentCaption?.start || 0,
+            end: currentCaption?.end || 0,
+          }));
 
   return (
     <main className="flex-1 bg-slate-950 flex flex-col justify-between items-center relative overflow-hidden select-none">
@@ -226,7 +235,7 @@ export default function VideoPreview({
                   e.stopPropagation();
                   setIsSelected(true);
                 }}
-                className={`absolute text-center px-4 py-2 rounded-2xl transition-shadow duration-100 z-30 group/caption cursor-grab active:cursor-grabbing select-none ${
+                className={`absolute text-center transition-shadow duration-100 z-30 group/caption cursor-grab active:cursor-grabbing select-none ${
                   isSelected || isDragging || isResizing
                     ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-black/80 shadow-[0_0_20px_rgba(16,185,129,0.4)]'
                     : 'hover:ring-1 hover:ring-emerald-400/50'
@@ -241,6 +250,8 @@ export default function VideoPreview({
                   fontSize: `${styleConfig.fontSize || 28}px`,
                   color: styleConfig.color || '#ffffff',
                   backgroundColor: styleConfig.backgroundColor || 'transparent',
+                  padding: `${styleConfig.bgPadding ?? 6}px ${(styleConfig.bgPadding ?? 6) * 1.6}px`,
+                  borderRadius: `${styleConfig.bgRadius ?? 12}px`,
                   mixBlendMode: styleConfig.mixBlendMode || 'normal',
                   willChange: 'transform, opacity',
                 }}
@@ -340,92 +351,51 @@ export default function VideoPreview({
 
               {/* Subtitle Words Content */}
               {(() => {
-                const strokeWidth = styleConfig.strokeWidth ?? 3.5;
-                const strokeColor = styleConfig.strokeColor || '#000000';
-                const shadowType = styleConfig.shadowType || 'cinematic';
-                const shadowBlur = styleConfig.shadowBlur ?? 14;
-                const shadowDist = styleConfig.shadowDistance ?? 4;
-                const shadowOpacity = styleConfig.shadowOpacity ?? 0.9;
-                const shadowColor = styleConfig.shadowColor || '#000000';
-                const highlightColor = styleConfig.highlightColor || '#facc15';
-
-                // Helper to convert hex to rgba
-                const hexToRgba = (hex, alpha = 1) => {
-                  if (!hex || typeof hex !== 'string') return `rgba(0,0,0,${alpha})`;
-                  const clean = hex.replace('#', '');
-                  if (clean.length === 6) {
-                    const r = parseInt(clean.substring(0, 2), 16);
-                    const g = parseInt(clean.substring(2, 4), 16);
-                    const b = parseInt(clean.substring(4, 6), 16);
-                    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-                  }
-                  return `rgba(0,0,0,${alpha})`;
-                };
-
-                let shadowFilter = 'none';
-                if (shadowType === 'cinematic') {
-                  const sMain = hexToRgba(shadowColor, shadowOpacity);
-                  const sSoft = hexToRgba(shadowColor, shadowOpacity * 0.6);
-                  shadowFilter = `drop-shadow(0px ${shadowDist}px ${shadowBlur}px ${sMain}) drop-shadow(0px ${shadowDist * 1.5}px ${shadowBlur * 1.6}px ${sSoft})`;
-                } else if (shadowType === 'glow') {
-                  const glowCol = highlightColor || '#facc15';
-                  const gMain = hexToRgba(glowCol, shadowOpacity);
-                  const gSoft = hexToRgba(glowCol, shadowOpacity * 0.7);
-                  shadowFilter = `drop-shadow(0px 0px ${shadowBlur}px ${gMain}) drop-shadow(0px 0px ${shadowBlur * 1.8}px ${gSoft})`;
-                } else if (shadowType === 'hard') {
-                  shadowFilter = `drop-shadow(${shadowDist}px ${shadowDist}px 0px ${shadowColor})`;
-                }
+                const perLine = Math.max(1, styleConfig.maxWordsPerLine ?? 3);
+                const lines = groupWordsIntoLines(wordsList, perLine);
 
                 return (
                   <div
-                    className="leading-tight tracking-wide uppercase font-black flex flex-wrap justify-center items-center gap-x-2 gap-y-1 pointer-events-none"
+                    className="pointer-events-none"
                     style={{
-                      filter: shadowFilter,
+                      filter: buildShadowFilter(styleConfig),
+                      lineHeight: styleConfig.lineHeight ?? 1.05,
                     }}
                   >
-                    {wordsList.map((wObj, wIdx) => {
-                      const rawWord = wObj.word || '';
-                      const cleanWord = rawWord.replace(/[^\w]/g, '');
-                      if (!cleanWord && !rawWord) return null;
+                    {lines.map((line, lineIdx) => (
+                      <div
+                        key={lineIdx}
+                        className="flex flex-wrap justify-center items-center gap-x-[0.26em] gap-y-[0.08em] font-black"
+                      >
+                        {line.map((wObj, i) => {
+                          const rawWord = (typeof wObj === 'string' ? wObj : wObj?.word) || '';
+                          if (!rawWord) return null;
+                          const cleanWord = rawWord.replace(/[^\w]/g, '');
 
-                      // Active karaoke condition
-                      const isWordActive =
-                        wObj.start != null &&
-                        wObj.end != null &&
-                        currentTime >= wObj.start &&
-                        currentTime <= wObj.end;
+                          const isActive =
+                            wObj?.start != null &&
+                            wObj?.end != null &&
+                            currentTime >= wObj.start &&
+                            currentTime <= wObj.end;
 
-                      const isKeyword =
-                        currentCaption.keywords?.some(
-                          (kw) => kw.toLowerCase() === cleanWord.toLowerCase()
-                        );
+                          const isKeyword =
+                            Array.isArray(currentCaption?.keywords) &&
+                            cleanWord.length > 0 &&
+                            currentCaption.keywords.some(
+                              (kw) => typeof kw === 'string' && kw.toLowerCase() === cleanWord.toLowerCase()
+                            );
 
-                      const isHighlighted = isWordActive || isKeyword;
-
-                      return (
-                        <span
-                          key={wIdx}
-                          className={`inline-block transition-all duration-75 ${
-                            isWordActive
-                              ? 'scale-115 -translate-y-0.5 font-black'
-                              : isKeyword
-                              ? 'scale-105 font-extrabold'
-                              : 'font-bold opacity-95'
-                          }`}
-                          style={{
-                            color: isHighlighted
-                              ? styleConfig.highlightColor || '#facc15'
-                              : styleConfig.color || '#ffffff',
-                            WebkitTextStroke: `${strokeWidth}px ${strokeColor}`,
-                            paintOrder: 'stroke fill',
-                            WebkitFontSmoothing: 'antialiased',
-                            textRendering: 'optimizeLegibility',
-                          }}
-                        >
-                          {rawWord}
-                        </span>
-                      );
-                    })}
+                          return (
+                            <span
+                              key={lineIdx * perLine + i}
+                              style={buildWordStyle(styleConfig, { isActive, isKeyword })}
+                            >
+                              {applyTextTransform(rawWord, styleConfig.textTransform)}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ))}
                   </div>
                 );
               })()}

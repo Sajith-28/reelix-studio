@@ -29,6 +29,14 @@ def _get_headers():
         "Prefer": "return=representation"
     }
 
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.Client(timeout=15.0, http2=False)
+    return _client
+
 def get_supabase_health():
     if not is_supabase_configured():
         return {"configured": False, "status": "Supabase credentials missing in .env"}
@@ -37,7 +45,8 @@ def get_supabase_health():
     try:
         req_url = f"{url.rstrip('/')}/rest/v1/projects?select=count"
         headers = _get_headers()
-        response = httpx.get(req_url, headers=headers, timeout=5.0)
+        client = _get_client()
+        response = client.get(req_url, headers=headers)
         if response.status_code < 400:
             return {"configured": True, "status": "Connected to Supabase! Table 'projects' is active and ready."}
         elif response.status_code == 404:
@@ -64,13 +73,17 @@ def save_project_to_supabase(project_id: str, data: dict):
     headers = _get_headers()
     headers["Prefer"] = "return=representation,resolution=merge-duplicates"
     
-    res = httpx.post(req_url, json=payload, headers=headers, timeout=10.0)
-    if res.status_code < 300:
-        try:
-            return res.json()
-        except Exception:
-            return {"status": "saved"}
-    print("Supabase save error:", res.status_code, res.text)
+    try:
+        client = _get_client()
+        res = client.post(req_url, json=payload, headers=headers)
+        if res.status_code < 300:
+            try:
+                return res.json()
+            except Exception:
+                return {"status": "saved"}
+        print("Supabase save error:", res.status_code, res.text)
+    except Exception as e:
+        print("Supabase save exception:", e)
     return None
 
 def get_project_from_supabase(project_id: str):
@@ -79,7 +92,12 @@ def get_project_from_supabase(project_id: str):
 
     url, key = _get_creds()
     req_url = f"{url.rstrip('/')}/rest/v1/projects?id=eq.{project_id}&select=*"
-    res = httpx.get(req_url, headers=_get_headers(), timeout=10.0)
-    if res.status_code == 200 and res.json():
-        return res.json()[0]
+    try:
+        client = _get_client()
+        res = client.get(req_url, headers=_get_headers())
+        if res.status_code == 200 and res.json():
+            return res.json()[0]
+    except Exception as e:
+        print("Supabase get exception:", e)
     return None
+

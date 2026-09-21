@@ -12,6 +12,11 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
+# Ensure FFmpeg / FFprobe in venv/bin is in PATH
+venv_bin = os.path.join(os.path.dirname(__file__), "venv", "bin")
+if os.path.exists(venv_bin) and venv_bin not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{venv_bin}:{os.environ.get('PATH', '')}"
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -98,7 +103,7 @@ async def process_video(
         wav_path = extract_audio(saved_video_path, os.path.join(TEMP_DIR, f"audio_{job_id}.wav"))
 
         # Step 3: Speech Recognition via Whisper Large-V3
-        trans_res = transcribe_video_audio(wav_path, spoken_language)
+        trans_res = transcribe_video_audio(wav_path, spoken_language, target_language)
         detected_lang = trans_res.get("detected_language", "English")
         raw_segments = trans_res.get("segments", [])
 
