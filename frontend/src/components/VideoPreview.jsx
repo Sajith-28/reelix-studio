@@ -104,6 +104,12 @@ export default function VideoPreview({
   // The Negative Text template composites in a canvas over the video; the DOM
   // caption below stays as an invisible drag / resize handle.
   const isNegative = styleConfig.renderer === 'negative';
+  const [negativeFallback, setNegativeFallback] = useState(false);
+  const effectiveNegative = isNegative && !negativeFallback;
+
+  useEffect(() => {
+    setNegativeFallback(false);
+  }, [styleConfig.renderer, videoUrl]);
 
   // Sync Video playback with react state
   useEffect(() => {
@@ -314,6 +320,7 @@ export default function VideoPreview({
           <video
             ref={videoRef}
             src={videoUrl}
+            crossOrigin="anonymous"
             onTimeUpdate={() => onTimeUpdate(videoRef.current?.currentTime || 0)}
             onLoadedMetadata={handleLoadedMetadata}
             onClick={onTogglePlay}
@@ -322,7 +329,7 @@ export default function VideoPreview({
             className="w-full h-full object-contain cursor-pointer block"
           />
 
-          {isNegative && (
+          {effectiveNegative && (
             <NegativeTextCanvas
               videoRef={videoRef}
               captions={captions}
@@ -332,6 +339,7 @@ export default function VideoPreview({
               isPlaying={isPlaying}
               videoDimensions={videoDimensions}
               displaySize={displaySize}
+              onFallback={() => setNegativeFallback(true)}
             />
           )}
 
@@ -384,10 +392,10 @@ export default function VideoPreview({
                   fontFeatureSettings: '"kern" 1, "liga" 1',
                   textRendering: 'geometricPrecision',
                   color: styleConfig.color || '#ffffff',
-                  backgroundColor: isNegative ? 'transparent' : (styleConfig.backgroundColor || 'transparent'),
+                  backgroundColor: effectiveNegative ? 'transparent' : (styleConfig.backgroundColor || 'transparent'),
                   padding: `${styleConfig.bgPadding ?? 6}px ${(styleConfig.bgPadding ?? 6) * 1.6}px`,
                   borderRadius: `${styleConfig.bgRadius ?? 12}px`,
-                  mixBlendMode: isNegative ? 'normal' : (styleConfig.mixBlendMode || 'normal'),
+                  mixBlendMode: effectiveNegative ? 'normal' : (isNegative ? 'difference' : (styleConfig.mixBlendMode || 'normal')),
                   willChange: 'transform, opacity',
                 }}
                 title="Click and drag to move subtitle anywhere on video!"
@@ -518,9 +526,9 @@ export default function VideoPreview({
                   <div
                     className="pointer-events-none"
                     style={{
-                      filter: isNegative ? 'none' : buildShadowFilter(styleConfig),
+                      filter: effectiveNegative ? 'none' : buildShadowFilter(styleConfig),
                       lineHeight: styleConfig.lineHeight ?? 1.05,
-                      visibility: isNegative ? 'hidden' : 'visible',
+                      visibility: effectiveNegative ? 'hidden' : 'visible',
                     }}
                   >
                     {lines.map((line, lineIdx) => (

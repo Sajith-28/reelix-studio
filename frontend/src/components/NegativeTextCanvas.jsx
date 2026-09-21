@@ -18,11 +18,22 @@ import { NegativeCaptionPainter, negativeFontString } from '../lib/negativeMask'
 
 const MAX_LONG_SIDE = 1440; // hard cap on the compositing resolution
 
-export default function NegativeTextCanvas({ videoRef, captions, styleConfig, fps = 30, currentTime, isPlaying, videoDimensions, displaySize }) {
+export default function NegativeTextCanvas({
+  videoRef,
+  captions,
+  styleConfig,
+  fps = 30,
+  currentTime,
+  isPlaying,
+  videoDimensions,
+  displaySize,
+  onFallback,
+}) {
   const canvasRef = useRef(null);
   const paintersRef = useRef([]);
   const fpsRef = useRef(fps);
   const drawRef = useRef(null);
+  const hasFailedRef = useRef(false);
   const [fontReady, setFontReady] = useState(0);
   useEffect(() => { fpsRef.current = fps; }, [fps]);
 
@@ -84,12 +95,22 @@ export default function NegativeTextCanvas({ videoRef, captions, styleConfig, fp
     const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: false });
 
     const draw = (mediaTime) => {
-      if (video.readyState < 2) return;
+      if (hasFailedRef.current || !video || video.readyState < 2) return;
       const t = typeof mediaTime === 'number' ? mediaTime : video.currentTime;
-      ctx.drawImage(video, 0, 0, dims.w, dims.h);
-      const frame = Math.max(0, Math.round(t * fpsRef.current));
-      for (const p of paintersRef.current) {
-        if (p.covers(frame)) p.render(ctx, frame);
+      try {
+        ctx.drawImage(video, 0, 0, dims.w, dims.h);
+        const frame = Math.max(0, Math.round(t * fpsRef.current));
+        for (const p of paintersRef.current) {
+          if (p.covers(frame)) p.render(ctx, frame);
+        }
+      } catch (err) {
+        if (!hasFailedRef.current) {
+          hasFailedRef.current = true;
+          console.warn('NegativeTextCanvas cross-origin restriction, falling back to CSS difference mode:', err);
+          if (typeof onFallback === 'function') {
+            onFallback();
+          }
+        }
       }
     };
     drawRef.current = draw;

@@ -471,7 +471,12 @@ export class NegativeCaptionPainter {
   render(ctx, frame) {
     if (!this.covers(frame)) return false;
     const c = this.clip;
-    const img = ctx.getImageData(c.x, c.y, c.w, c.h);
+    let img;
+    try {
+      img = ctx.getImageData(c.x, c.y, c.w, c.h);
+    } catch (err) {
+      throw err;
+    }
     let layers = this._frameCache.get(frame);
     if (!layers) {
       layers = this.buildLayers(frame, img.data);
@@ -482,7 +487,11 @@ export class NegativeCaptionPainter {
     // contrast-boost follows the live (unquantised) score even on cached masks
     if (layers.contrast) layers.contrast = this.score;
     compositeLayers(img.data, c.w * c.h, 4, layers);
-    ctx.putImageData(img, c.x, c.y);
+    try {
+      ctx.putImageData(img, c.x, c.y);
+    } catch (e) {
+      return false;
+    }
     return true;
   }
 }
