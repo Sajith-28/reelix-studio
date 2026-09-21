@@ -83,31 +83,31 @@ export default function BackendSettingsModal({ isOpen, onClose, onSave }) {
             <button
               type="button"
               onClick={() => {
+                setUrl('https://reelix-studio-api.onrender.com');
+                handleTest('https://reelix-studio-api.onrender.com');
+              }}
+              className="p-2.5 bg-slate-800/90 hover:bg-slate-700/90 text-left text-slate-200 text-xs rounded-xl border border-violet-500/40 font-mono transition-all cursor-pointer hover:border-violet-400 shadow-lg shadow-violet-500/5"
+            >
+              <div className="flex items-center gap-1.5 font-bold text-violet-400 mb-0.5">
+                <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                ☁️ Render Cloud (24/7, No PC needed)
+              </div>
+              <div className="text-[10px] text-slate-400 truncate">reelix-studio-api.onrender.com</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
                 setUrl('https://three-leonard-semester-api.trycloudflare.com');
                 handleTest('https://three-leonard-semester-api.trycloudflare.com');
               }}
               className="p-2.5 bg-slate-800/90 hover:bg-slate-700/90 text-left text-slate-200 text-xs rounded-xl border border-amber-500/40 font-mono transition-all cursor-pointer hover:border-amber-400 shadow-lg shadow-amber-500/5"
             >
               <div className="flex items-center gap-1.5 font-bold text-amber-400 mb-0.5">
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                ⚡ Cloudflare Tunnel (Best / Zero Warnings)
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                ⚡ Cloudflare Tunnel (PC must be on)
               </div>
               <div className="text-[10px] text-slate-400 truncate">three-leonard-semester-api.trycloudflare.com</div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setUrl('https://unlocking-tropics-rearview.ngrok-free.dev');
-                handleTest('https://unlocking-tropics-rearview.ngrok-free.dev');
-              }}
-              className="p-2.5 bg-slate-800/90 hover:bg-slate-700/90 text-left text-slate-200 text-xs rounded-xl border border-emerald-500/30 font-mono transition-all cursor-pointer hover:border-emerald-400"
-            >
-              <div className="flex items-center gap-1.5 font-bold text-emerald-400 mb-0.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                🚀 Ngrok Public Tunnel (Any Device)
-              </div>
-              <div className="text-[10px] text-slate-400 truncate">unlocking-tropics-rearview.ngrok-free.dev</div>
             </button>
 
             <button
