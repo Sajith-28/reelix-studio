@@ -277,9 +277,19 @@ export default function App() {
         words: Array.isArray(c?.words) ? c.words : [],
       }));
 
+      let localBlobUrl = '';
+      try {
+        if (file instanceof Blob || file instanceof File) {
+          localBlobUrl = URL.createObjectURL(file);
+        }
+      } catch (e) {
+        console.warn('Could not create local blob URL:', e);
+      }
+
       const sanitizedProject = {
         ...data,
-        video_url: resolveMediaUrl(data?.video_url || ''),
+        video_url: localBlobUrl || resolveMediaUrl(data?.video_url || ''),
+        server_video_url: data?.video_url || '',
         video_filename: data?.video_filename || file.name,
         duration: typeof data?.duration === 'number' ? data.duration : 0,
         captions: sanitizedCaptions,
@@ -662,7 +672,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          video_url: project.video_url,
+          video_url: project.server_video_url || project.video_url,
           captions: project.captions,
           style: styleConfig,
           resolution: resolution,

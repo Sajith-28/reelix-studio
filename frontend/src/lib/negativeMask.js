@@ -184,11 +184,15 @@ export class NegativeCaptionPainter {
 
   _alpha(canvas) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const data = ctx.getImageData(0, 0, this.rect.w, this.rect.h).data;
-    const n = this.rect.w * this.rect.h;
-    const out = new Uint8ClampedArray(n);
-    for (let i = 0; i < n; i++) out[i] = data[i * 4 + 3];
-    return out;
+    try {
+      const data = ctx.getImageData(0, 0, this.rect.w, this.rect.h).data;
+      const n = this.rect.w * this.rect.h;
+      const out = new Uint8ClampedArray(n);
+      for (let i = 0; i < n; i++) out[i] = data[i * 4 + 3];
+      return out;
+    } catch (err) {
+      return new Uint8ClampedArray(this.rect.w * this.rect.h);
+    }
   }
 
   _maskToCanvas(mask) {
@@ -475,7 +479,7 @@ export class NegativeCaptionPainter {
     try {
       img = ctx.getImageData(c.x, c.y, c.w, c.h);
     } catch (err) {
-      throw err;
+      return false;
     }
     let layers = this._frameCache.get(frame);
     if (!layers) {
