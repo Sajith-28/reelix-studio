@@ -29,6 +29,7 @@ export const apiFetch = (path, options = {}) => {
   const url = apiUrl(path);
   const headers = {
     'Bypass-Tunnel-Reminder': 'true',
+    'ngrok-skip-browser-warning': '1',
     ...(options.headers || {}),
   };
   return fetch(url, { ...options, headers });
@@ -48,8 +49,11 @@ export const checkBackendHealth = async (overrideBase = null) => {
     const url = `${base}/`;
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'Bypass-Tunnel-Reminder': 'true' },
-      signal: AbortSignal.timeout(5000),
+      headers: {
+        'Bypass-Tunnel-Reminder': 'true',
+        'ngrok-skip-browser-warning': '1',
+      },
+      signal: AbortSignal.timeout(6000),
     });
     if (res.ok) {
       const data = await res.json().catch(() => ({}));

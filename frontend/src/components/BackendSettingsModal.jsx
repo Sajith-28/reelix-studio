@@ -65,49 +65,85 @@ export default function BackendSettingsModal({ isOpen, onClose, onSave }) {
               setUrl(e.target.value);
               setTestResult(null);
             }}
-            placeholder="e.g. https://purple-zebras-knock.loca.lt or http://localhost:8001"
+            placeholder="e.g. https://unlocking-tropics-rearview.ngrok-free.dev or your-render-app.onrender.com"
             className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
           />
           <p className="text-[11px] text-slate-400">
-            Leave blank if using default proxy on localhost, or enter your tunnel (ngrok / localtunnel) or cloud server URL (Render / Railway).
+            For other devices or phones: enter a public HTTPS tunnel URL or your permanent cloud server URL (Render).
           </p>
         </div>
 
         {/* Quick presets */}
-        <div className="space-y-1.5 pt-1">
-          <span className="text-[11px] font-semibold text-slate-400 block">Quick Options:</span>
-          <div className="flex flex-wrap gap-2">
+        <div className="space-y-2 pt-1">
+          <span className="text-[11px] font-semibold text-slate-400 block">Quick Presets (Click to Test & Connect):</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => {
-                setUrl('https://purple-zebras-knock.loca.lt');
-                handleTest('https://purple-zebras-knock.loca.lt');
+                setUrl('https://unlocking-tropics-rearview.ngrok-free.dev');
+                handleTest('https://unlocking-tropics-rearview.ngrok-free.dev');
               }}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg border border-slate-700 font-mono transition-all cursor-pointer"
+              className="p-2.5 bg-slate-800/90 hover:bg-slate-700/90 text-left text-slate-200 text-xs rounded-xl border border-emerald-500/30 font-mono transition-all cursor-pointer hover:border-emerald-400"
             >
-              🌐 Active Localtunnel
+              <div className="flex items-center gap-1.5 font-bold text-emerald-400 mb-0.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                🚀 Ngrok Public Tunnel (Any Device)
+              </div>
+              <div className="text-[10px] text-slate-400 truncate">unlocking-tropics-rearview.ngrok-free.dev</div>
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUrl('https://spotty-years-grab.loca.lt');
+                handleTest('https://spotty-years-grab.loca.lt');
+              }}
+              className="p-2.5 bg-slate-800/90 hover:bg-slate-700/90 text-left text-slate-200 text-xs rounded-xl border border-slate-700 font-mono transition-all cursor-pointer hover:border-cyan-400"
+            >
+              <div className="flex items-center gap-1.5 font-bold text-cyan-400 mb-0.5">
+                <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                🌐 Localtunnel (Any Device)
+              </div>
+              <div className="text-[10px] text-slate-400 truncate">spotty-years-grab.loca.lt</div>
+            </button>
+
             <button
               type="button"
               onClick={() => {
                 setUrl('http://localhost:8001');
                 handleTest('http://localhost:8001');
               }}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg border border-slate-700 font-mono transition-all cursor-pointer"
+              className="p-2 bg-slate-800/60 hover:bg-slate-700/80 text-left text-slate-300 text-xs rounded-xl border border-slate-800 font-mono transition-all cursor-pointer"
             >
-              💻 Localhost:8001
+              <div className="font-semibold text-slate-300">💻 Localhost:8001</div>
+              <div className="text-[10px] text-slate-500">Only on Host Computer</div>
             </button>
+
             <button
               type="button"
               onClick={() => {
                 setUrl('');
                 handleTest('');
               }}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs rounded-lg border border-slate-700 font-mono transition-all cursor-pointer"
+              className="p-2 bg-slate-800/60 hover:bg-slate-700/80 text-left text-slate-400 text-xs rounded-xl border border-slate-800 font-mono transition-all cursor-pointer"
             >
-              🔄 Default (Reset)
+              <div className="font-semibold text-slate-400">🔄 Default (Reset)</div>
+              <div className="text-[10px] text-slate-500">Clear custom URL</div>
             </button>
           </div>
+        </div>
+
+        {/* Any Device Guidance Alert */}
+        <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl text-[11px] text-slate-300 space-y-1.5">
+          <div className="font-semibold text-slate-200 flex items-center gap-1.5">
+            <span>📱</span> How to use on another computer / phone:
+          </div>
+          <ol className="list-decimal list-inside space-y-1 text-slate-400 pl-1 leading-relaxed">
+            <li>On the other device, open this <strong>Settings (⚙️)</strong> button.</li>
+            <li>Click <strong>🚀 Ngrok Public Tunnel</strong> or enter your tunnel / cloud URL.</li>
+            <li>Click <strong>Test Connection</strong> and then <strong>Save & Apply</strong>.</li>
+            <li><em>For permanent 24/7 access without keeping your PC on:</em> Deploy to Render using the Dockerfile in this repo.</li>
+          </ol>
         </div>
 
         {/* Test Connection Status */}
