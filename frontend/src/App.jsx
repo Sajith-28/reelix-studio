@@ -12,7 +12,7 @@ import Timeline from './components/Timeline';
 import StyleInspector from './components/StyleInspector';
 import RenderingProgressModal from './components/RenderingProgressModal';
 import { TEMPLATE_PRESETS, templateToStyle } from './lib/captionStyle';
-import { apiUrl, resolveMediaUrl } from './lib/api';
+import { apiUrl, apiFetch, resolveMediaUrl } from './lib/api';
 import './App.css';
 
 const DEFAULT_STYLE = { ...templateToStyle(TEMPLATE_PRESETS[0]), templateId: TEMPLATE_PRESETS[0].id };
@@ -118,7 +118,7 @@ export default function App() {
       // Persist to local backup
       localStorage.setItem('sublyx_saved_project', JSON.stringify({ ...project, ...payload }));
 
-      const res = await fetch(apiUrl('/api/supabase/save-project'), {
+      const res = await apiFetch('/api/supabase/save-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -238,13 +238,28 @@ export default function App() {
       formData.append('target_language', targetLang);
 
       setUploadStage('Transcribing speech with Whisper Large-V3...');
-      const res = await fetch(apiUrl('/api/process-video'), {
-        method: 'POST',
-        body: formData,
-      });
+      let res;
+      try {
+        res = await apiFetch('/api/process-video', {
+          method: 'POST',
+          body: formData,
+        });
+      } catch (netErr) {
+        throw new Error(
+          `Unable to connect to Python backend (${netErr.message || 'Network error'}). ` +
+          `If using the Vercel app, configure your Backend Server URL via "Backend Settings" or run locally at http://localhost:5173.`
+        );
+      }
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
+        if (res.status === 405) {
+          throw new Error(
+            'Backend server not found (405 Method Not Allowed). ' +
+            'Vercel hosts the static frontend. The Python/FFmpeg backend must be connected. ' +
+            'Use the "Backend Settings" button to set your backend URL or run locally at http://localhost:5173.'
+          );
+        }
         throw new Error(errData.detail || `Server error (${res.status})`);
       }
 
@@ -618,7 +633,7 @@ export default function App() {
   const handleExportSrt = async () => {
     if (!project) return;
     try {
-      const res = await fetch(apiUrl('/api/export-srt'), {
+      const res = await apiFetch('/api/export-srt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ captions: project.captions }),
@@ -643,7 +658,7 @@ export default function App() {
     setExportedResolution(resolution);
 
     try {
-      const res = await fetch(apiUrl('/api/export-video'), {
+      const res = await apiFetch('/api/export-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,9 +1,37 @@
-export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+export const getApiBase = () => {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('reelix_custom_api_url');
+    if (custom && custom.trim()) {
+      return custom.trim().replace(/\/$/, '');
+    }
+  }
+  return (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+};
+
+export const setApiBase = (url) => {
+  if (typeof window !== 'undefined') {
+    if (url && url.trim()) {
+      localStorage.setItem('reelix_custom_api_url', url.trim().replace(/\/$/, ''));
+    } else {
+      localStorage.removeItem('reelix_custom_api_url');
+    }
+  }
+};
 
 export const apiUrl = (path) => {
   if (!path) return '';
+  const base = getApiBase();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE}${normalizedPath}`;
+  return `${base}${normalizedPath}`;
+};
+
+export const apiFetch = (path, options = {}) => {
+  const url = apiUrl(path);
+  const headers = {
+    'Bypass-Tunnel-Reminder': 'true',
+    ...(options.headers || {}),
+  };
+  return fetch(url, { ...options, headers });
 };
 
 export const resolveMediaUrl = (url) => {
@@ -12,4 +40,23 @@ export const resolveMediaUrl = (url) => {
     return url;
   }
   return apiUrl(url);
+};
+
+export const checkBackendHealth = async (overrideBase = null) => {
+  try {
+    const base = overrideBase !== null ? (overrideBase || '').replace(/\/$/, '') : getApiBase();
+    const url = `${base}/`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Bypass-Tunnel-Reminder': 'true' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { online: true, data };
+    }
+    return { online: false, status: res.status };
+  } catch (err) {
+    return { online: false, error: err.message };
+  }
 };

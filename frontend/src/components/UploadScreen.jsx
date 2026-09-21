@@ -1,11 +1,13 @@
 /**
- * SUBLYX — Upload Screen Component
- * Polished studio dropzone with target language selection and stage indicators
+ * REELIX — Upload Screen Component
+ * Polished studio dropzone with target language selection, stage indicators, and backend connectivity manager
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import InsaneProcessingAnimation from './InsaneProcessingAnimation';
 import ErrorBoundary from './ErrorBoundary';
+import BackendSettingsModal from './BackendSettingsModal';
+import { checkBackendHealth, getApiBase } from '../lib/api';
 
 const TARGET_LANGUAGES = [
   'English',
@@ -28,6 +30,18 @@ export default function UploadScreen({ onUploadStart, isProcessing, currentStage
   const [spokenLang, setSpokenLang] = useState('Auto Detect');
   const [targetLang, setTargetLang] = useState('English');
   const [dragActive, setDragActive] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [backendStatus, setBackendStatus] = useState('checking'); // 'checking' | 'online' | 'offline'
+
+  const refreshBackendHealth = async () => {
+    setBackendStatus('checking');
+    const res = await checkBackendHealth();
+    setBackendStatus(res.online ? 'online' : 'offline');
+  };
+
+  useEffect(() => {
+    refreshBackendHealth();
+  }, []);
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -67,13 +81,43 @@ export default function UploadScreen({ onUploadStart, isProcessing, currentStage
 
       {/* Brand Header */}
       <div className="text-center mb-6 relative z-10">
-        <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-1.5 rounded-full text-emerald-400 text-xs font-extrabold tracking-wider uppercase mb-3 shadow-lg shadow-emerald-500/10">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span>REELIX STUDIO AI PIPELINE</span>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/30">
-            GROQ LPU &bull; SUPABASE
-          </span>
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-3">
+          <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-1.5 rounded-full text-emerald-400 text-xs font-extrabold tracking-wider uppercase shadow-lg shadow-emerald-500/10">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>REELIX STUDIO AI PIPELINE</span>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/30">
+              GROQ LPU &bull; SUPABASE
+            </span>
+          </div>
+
+          {/* Backend Connection Status Pill */}
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            title="Configure Backend API Server (FastAPI / FFmpeg)"
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer backdrop-blur-md ${
+              backendStatus === 'online'
+                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60'
+                : 'bg-rose-950/60 border-rose-500/40 text-rose-300 hover:bg-rose-900/60 animate-pulse'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                backendStatus === 'online'
+                  ? 'bg-emerald-400 animate-pulse'
+                  : 'bg-rose-500'
+              }`}
+            />
+            <span>
+              {backendStatus === 'online'
+                ? 'Backend: Online'
+                : backendStatus === 'checking'
+                ? 'Checking Backend...'
+                : 'Backend Offline (Click to setup)'}
+            </span>
+            <span className="text-[10px] opacity-75">⚙️</span>
+          </button>
         </div>
+
         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white font-['Satoshi'] drop-shadow-md">
           REELIX <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400">STUDIO</span>
         </h1>
@@ -142,18 +186,18 @@ export default function UploadScreen({ onUploadStart, isProcessing, currentStage
               )}
             </div>
 
-            {/* Language Selectors */}
-            <div className="grid grid-cols-2 gap-4 mt-6">
+            {/* Language Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
                   Spoken Language
                 </label>
                 <select
                   value={spokenLang}
                   onChange={(e) => setSpokenLang(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                  className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
                 >
-                  <option value="Auto Detect">⚡ Auto Detect (Whisper)</option>
+                  <option value="Auto Detect">Auto Detect</option>
                   {TARGET_LANGUAGES.map((l) => (
                     <option key={l} value={l}>{l}</option>
                   ))}
@@ -161,7 +205,7 @@ export default function UploadScreen({ onUploadStart, isProcessing, currentStage
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
                   Target Language
                 </label>
                 <select
@@ -176,11 +220,34 @@ export default function UploadScreen({ onUploadStart, isProcessing, currentStage
               </div>
             </div>
 
-            {/* Error Message */}
+            {/* Error Message with Contextual Fix Action */}
             {error && (
-              <div className="mt-4 p-3.5 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 flex items-center gap-2">
-                <span>⚠</span>
-                <span>{error}</span>
+              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-2xl text-xs text-red-400 space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="text-base leading-none">⚠</span>
+                  <span className="flex-1 leading-relaxed font-medium">{error}</span>
+                </div>
+                {(error.includes('405') ||
+                  error.includes('backend') ||
+                  error.includes('Network') ||
+                  error.includes('connect')) && (
+                  <div className="pt-2 flex flex-wrap gap-2 border-t border-red-500/20">
+                    <button
+                      onClick={() => setIsSettingsOpen(true)}
+                      className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-200 font-bold rounded-lg border border-red-500/40 text-xs transition-all cursor-pointer"
+                    >
+                      ⚙️ Configure Backend Server
+                    </button>
+                    <a
+                      href="http://localhost:5173"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg text-xs transition-all flex items-center gap-1"
+                    >
+                      Launch Local Editor (http://localhost:5173) ↗
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 
@@ -215,7 +282,13 @@ export default function UploadScreen({ onUploadStart, isProcessing, currentStage
           </ErrorBoundary>
         )}
       </div>
+
+      {/* Backend Connection Modal */}
+      <BackendSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onSave={() => refreshBackendHealth()}
+      />
     </div>
   );
 }
-
