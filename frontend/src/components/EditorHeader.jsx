@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { apiUrl } from '../lib/api';
 
 const RESOLUTION_OPTIONS = [
   { id: 'original', label: '🏆 Highest Resolution (Original / 1080p / 4K)', badge: 'Best Quality' },
@@ -157,7 +158,7 @@ export default function EditorHeader({
         <button
           onClick={async () => {
             try {
-              const res = await fetch('/api/supabase/status');
+              const res = await fetch(apiUrl('/api/supabase/status'));
               const data = await res.json();
               if (data.configured) {
                 alert(`⚡ Supabase Connection Status:\n\n${data.status}`);

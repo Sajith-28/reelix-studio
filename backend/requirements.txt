@@ -3,3 +3,6 @@ uvicorn[standard]
 groq
 python-dotenv
 python-multipart
+
+# dev: backend/tests (preview <-> export parity for the Negative Nano template)
+pytest

@@ -12,6 +12,7 @@ import Timeline from './components/Timeline';
 import StyleInspector from './components/StyleInspector';
 import RenderingProgressModal from './components/RenderingProgressModal';
 import { TEMPLATE_PRESETS, templateToStyle } from './lib/captionStyle';
+import { apiUrl, resolveMediaUrl } from './lib/api';
 import './App.css';
 
 const DEFAULT_STYLE = { ...templateToStyle(TEMPLATE_PRESETS[0]), templateId: TEMPLATE_PRESETS[0].id };
@@ -117,7 +118,7 @@ export default function App() {
       // Persist to local backup
       localStorage.setItem('sublyx_saved_project', JSON.stringify({ ...project, ...payload }));
 
-      const res = await fetch('/api/supabase/save-project', {
+      const res = await fetch(apiUrl('/api/supabase/save-project'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -194,6 +195,12 @@ export default function App() {
       } else if (e.key === ']') {
         e.preventDefault();
         handleTrimEnd();
+      } else if (e.code === 'Home') {
+        e.preventDefault();
+        setCurrentTime(0);
+      } else if (e.code === 'End') {
+        e.preventDefault();
+        setCurrentTime(Math.max(0, duration - 0.05));
       } else if (e.code === 'KeyM') {
         e.preventDefault();
         setIsMuted((prev) => !prev);
@@ -231,7 +238,7 @@ export default function App() {
       formData.append('target_language', targetLang);
 
       setUploadStage('Transcribing speech with Whisper Large-V3...');
-      const res = await fetch('/api/process-video', {
+      const res = await fetch(apiUrl('/api/process-video'), {
         method: 'POST',
         body: formData,
       });
@@ -257,7 +264,7 @@ export default function App() {
 
       const sanitizedProject = {
         ...data,
-        video_url: data?.video_url || '',
+        video_url: resolveMediaUrl(data?.video_url || ''),
         video_filename: data?.video_filename || file.name,
         duration: typeof data?.duration === 'number' ? data.duration : 0,
         captions: sanitizedCaptions,
@@ -611,7 +618,7 @@ export default function App() {
   const handleExportSrt = async () => {
     if (!project) return;
     try {
-      const res = await fetch('/api/export-srt', {
+      const res = await fetch(apiUrl('/api/export-srt'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ captions: project.captions }),
@@ -636,7 +643,7 @@ export default function App() {
     setExportedResolution(resolution);
 
     try {
-      const res = await fetch('/api/export-video', {
+      const res = await fetch(apiUrl('/api/export-video'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -653,7 +660,7 @@ export default function App() {
       }
 
       const data = await res.json();
-      setExportedVideoUrl(data.export_url);
+      setExportedVideoUrl(resolveMediaUrl(data.export_url));
     } catch (err) {
       alert(err.message || 'Video export failed.');
     } finally {
@@ -753,6 +760,8 @@ export default function App() {
           isMuted={isMuted}
           styleConfig={styleConfig}
           currentCaption={currentCaption}
+          captions={project.captions}
+          fps={project.fps || 30}
           onTimeUpdate={setCurrentTime}
           onLoadedMetadata={(dur) => setDuration(dur || project.duration || 0)}
           onTogglePlay={() => setIsPlaying(!isPlaying)}
@@ -771,8 +780,9 @@ export default function App() {
         {/* Right Column: Style & Template Inspector */}
         <StyleInspector
           styleConfig={styleConfig}
-          onUpdateStyle={(key, val) => setStyleConfig({ ...styleConfig, [key]: val })}
-          onApplyTemplate={(tpl) => setStyleConfig({ ...styleConfig, ...tpl })}
+          onUpdateStyle={(key, val) => setStyleConfig((prev) => ({ ...prev, [key]: val }))}
+          onUpdateStyleBatch={(updates) => setStyleConfig((prev) => ({ ...prev, ...updates }))}
+          onApplyTemplate={(tpl) => setStyleConfig((prev) => ({ ...prev, ...tpl }))}
           onAutoHighlightAll={handleAutoHighlightAll}
           onAutoSplitLong={handleAutoSplitLong}
           onUppercaseAll={handleUppercaseAll}
@@ -836,6 +846,14 @@ export default function App() {
                 <span className="font-mono font-bold bg-slate-700 text-emerald-400 px-1.5 py-0.5 rounded">Shift + ← / →</span>
               </div>
               <div className="flex items-center justify-between p-2 rounded bg-slate-800/60 border border-slate-700/50">
+                <span className="text-slate-300">Start from beginning / End</span>
+                <span className="font-mono font-bold bg-slate-700 text-emerald-400 px-1.5 py-0.5 rounded">Home / End</span>
+              </div>
+              <div className="flex items-center justify-between p-2 rounded bg-slate-800/60 border border-slate-700/50">
+                <span className="text-slate-300">Resize caption text</span>
+                <span className="font-mono font-bold bg-slate-700 text-emerald-400 px-1.5 py-0.5 rounded">Ctrl + Scroll</span>
+              </div>
+              <div className="flex items-center justify-between p-2 rounded bg-slate-800/60 border border-slate-700/50">
                 <span className="text-slate-300">Mute Audio</span>
                 <span className="font-mono font-bold bg-slate-700 text-emerald-400 px-1.5 py-0.5 rounded">M</span>
               </div>
@@ -857,7 +875,7 @@ export default function App() {
       {/* Futuristic Export Rendering Progress Overlay */}
       {isExportingVideo && (
         <RenderingProgressModal
-          isDifferenceMode={styleConfig.mixBlendMode === 'difference'}
+          isDifferenceMode={styleConfig.mixBlendMode === 'difference' || styleConfig.renderer === 'negative'}
           resolution={exportedResolution}
         />
       )}

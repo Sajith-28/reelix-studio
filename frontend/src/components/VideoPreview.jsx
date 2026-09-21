@@ -9,7 +9,34 @@ import {
   buildWordStyle,
   applyTextTransform,
   groupWordsIntoLines,
+  fitFontSize,
+  nearestFontWeight,
 } from '../lib/captionStyle';
+import NegativeTextCanvas from './NegativeTextCanvas';
+import { refScale } from '../lib/negativeText';
+
+// Entry transitions — the same numbers the exporter uses (TRANSITIONS in rendering.py).
+const TRANSITIONS = {
+  'Fade In + Slide Up': { fade: true, slide: true, scaleFrom: 1, seconds: 0.18 },
+  'Slide Up': { fade: false, slide: true, scaleFrom: 1, seconds: 0.18 },
+  'Fade In': { fade: true, slide: false, scaleFrom: 1, seconds: 0.18 },
+  'Pop Up': { fade: true, slide: false, scaleFrom: 0.7, seconds: 0.18 },
+  'Zoom Kinetic': { fade: true, slide: false, scaleFrom: 0.6, seconds: 0.22 },
+  None: { fade: false, slide: false, scaleFrom: 1, seconds: 0 },
+};
+const SLIDE_UP_PIXELS = 22;
+
+// Snap targets (percent of the frame) while dragging the caption: centre,
+// rule-of-thirds and the Reels / Shorts caption positions.
+const X_GUIDES = [50, 33.3, 66.7];
+const Y_GUIDES = [50, 33.3, 66.7, 15, 72, 82];
+const SNAP_PCT = 1.5;
+// Shorts / Reels UI overlays: the top bar, the right-hand action rail and the
+// bottom caption / audio strip. Text inside this box stays readable on-platform.
+const SAFE_AREA = { left: 4, right: 86, top: 8, bottom: 80 };
+const FONT_MIN = 12;
+const FONT_MAX = 96;
+const TIP_KEY = 'reelix_tip_caption_dismissed';
 
 export default function VideoPreview({
   videoUrl,
@@ -21,6 +48,8 @@ export default function VideoPreview({
   isMuted,
   styleConfig,
   currentCaption,
+  captions = [],
+  fps = 30,
   onTimeUpdate,
   onLoadedMetadata,
   onTogglePlay,
@@ -41,8 +70,40 @@ export default function VideoPreview({
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isSelected, setIsSelected] = useState(false);
+  const [showGrid, setShowGrid] = useState(false);
+  const [snapGuides, setSnapGuides] = useState({ x: null, y: null });
+  const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
+  const [showTip, setShowTip] = useState(() => {
+    try { return localStorage.getItem(TIP_KEY) !== '1'; } catch { return true; }
+  });
   const dragRef = useRef(null);
   const resizeRef = useRef(null);
+  const captionRef = useRef(null);
+
+  const dismissTip = () => {
+    setShowTip(false);
+    try { localStorage.setItem(TIP_KEY, '1'); } catch { /* private mode */ }
+  };
+  const clampSize = (v) => Math.max(FONT_MIN, Math.min(FONT_MAX, Math.round(v)));
+  // The exporter sizes text as fontSize × (videoH / 520) (portrait) or
+  // (videoW / 640) (landscape). Scaling the overlay by the same rule for the
+  // *displayed* video size keeps the preview identical to the burned-in MP4 at
+  // any window size.
+  const previewScale = displaySize.width && displaySize.height ? refScale(displaySize.width, displaySize.height) : 1;
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect;
+      if (r && r.width && r.height) setDisplaySize({ width: r.width, height: r.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [videoDimensions.aspect]);
+  // The Negative Text template composites in a canvas over the video; the DOM
+  // caption below stays as an invisible drag / resize handle.
+  const isNegative = styleConfig.renderer === 'negative';
 
   // Sync Video playback with react state
   useEffect(() => {
@@ -53,6 +114,18 @@ export default function VideoPreview({
       videoRef.current.pause();
     }
   }, [isPlaying]);
+
+  // Seeks made through state (timeline clicks, ±3s, caption selection) move the
+  // <video> too, so the frame under the caption is the one the editor shows.
+  // While playing only large jumps count — timeupdate lag must never seek back.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !Number.isFinite(currentTime)) return;
+    const diff = Math.abs(v.currentTime - currentTime);
+    if ((!isPlaying && diff > 0.05) || diff > 1.5) {
+      v.currentTime = currentTime;
+    }
+  }, [currentTime, isPlaying]);
 
   // Sync Playback Rate
   useEffect(() => {
@@ -112,16 +185,39 @@ export default function VideoPreview({
     };
   };
 
-  // Resize corner handle handler
+  // Resize corner handle handler. The text scales with the distance between the
+  // pointer and the caption's centre, so pulling any corner outwards grows it
+  // and pushing inwards shrinks it — like a zoom handle in a real editor.
   const handleMouseDownResize = (e) => {
     e.stopPropagation();
     e.preventDefault();
+    const box = captionRef.current?.getBoundingClientRect();
+    const cx = box ? box.left + box.width / 2 : e.clientX;
+    const cy = box ? box.top + box.height / 2 : e.clientY - 40;
     setIsResizing(true);
+    setIsSelected(true);
     resizeRef.current = {
-      startY: e.clientY,
+      cx,
+      cy,
+      startDist: Math.max(8, Math.hypot(e.clientX - cx, e.clientY - cy)),
       initialSize: styleConfig.fontSize || 28,
     };
   };
+
+  // Ctrl / ⌘ + scroll over the caption zooms the text (native listener: React's
+  // wheel handler is passive, so the browser would also zoom the page).
+  useEffect(() => {
+    const el = captionRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const step = (e.deltaY < 0 ? 1 : -1) * (e.shiftKey ? 4 : 1);
+      onUpdateStyle?.('fontSize', clampSize((styleConfig.fontSize || 28) + step));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [currentCaption, styleConfig.fontSize, onUpdateStyle]);
 
   // Window mouse move listener for smooth drag & resize
   useEffect(() => {
@@ -131,8 +227,21 @@ export default function VideoPreview({
         const deltaY = e.clientY - dragRef.current.startY;
         const deltaXPct = (deltaX / dragRef.current.containerWidth) * 100;
         const deltaYPct = (deltaY / dragRef.current.containerHeight) * 100;
-        const newX = Math.round(Math.max(5, Math.min(95, dragRef.current.initialX + deltaXPct)));
-        const newY = Math.round(Math.max(8, Math.min(92, dragRef.current.initialY + deltaYPct)));
+        const rawX = Math.max(5, Math.min(95, dragRef.current.initialX + deltaXPct));
+        const rawY = Math.max(8, Math.min(92, dragRef.current.initialY + deltaYPct));
+        // Snap to the guides unless Shift is held; snapped values keep the
+        // guide's exact position (33.3 / 66.7) instead of rounding to integers.
+        let newX = Math.round(rawX);
+        let newY = Math.round(rawY);
+        let gx = null;
+        let gy = null;
+        if (!e.shiftKey) {
+          gx = X_GUIDES.find((g) => Math.abs(rawX - g) <= SNAP_PCT) ?? null;
+          gy = Y_GUIDES.find((g) => Math.abs(rawY - g) <= SNAP_PCT) ?? null;
+          if (gx != null) newX = gx;
+          if (gy != null) newY = gy;
+        }
+        setSnapGuides({ x: gx, y: gy });
         if (onUpdateStyleBatch) {
           onUpdateStyleBatch({ xPercent: newX, yPercent: newY, position: 'custom' });
         } else if (onUpdateStyle) {
@@ -140,16 +249,20 @@ export default function VideoPreview({
           onUpdateStyle('yPercent', newY);
         }
       } else if (isResizing && resizeRef.current) {
-        const deltaY = (resizeRef.current.startY - e.clientY) * 0.4;
-        const newSize = Math.max(14, Math.min(64, Math.round(resizeRef.current.initialSize + deltaY)));
-        if (onUpdateStyle) {
+        const { cx, cy, startDist, initialSize } = resizeRef.current;
+        const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
+        const newSize = clampSize(initialSize * (dist / startDist));
+        if (newSize !== (styleConfig.fontSize || 28) && onUpdateStyle) {
           onUpdateStyle('fontSize', newSize);
         }
       }
     };
 
     const handleMouseUp = () => {
-      if (isDragging) setIsDragging(false);
+      if (isDragging) {
+        setIsDragging(false);
+        setSnapGuides({ x: null, y: null });
+      }
       if (isResizing) setIsResizing(false);
     };
 
@@ -161,7 +274,7 @@ export default function VideoPreview({
         window.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, onUpdateStyle, onUpdateStyleBatch]);
+  }, [isDragging, isResizing, onUpdateStyle, onUpdateStyleBatch, styleConfig.fontSize]);
 
   // Extract active word in current caption if word timestamps are present
   const wordsList =
@@ -178,6 +291,14 @@ export default function VideoPreview({
 
   return (
     <main className="flex-1 bg-slate-950 flex flex-col justify-between items-center relative overflow-hidden select-none">
+      {/* First-run tip */}
+      {showTip && currentCaption && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-slate-900/95 border border-emerald-500/40 text-slate-200 text-[11px] font-semibold px-3 py-1.5 rounded-full shadow-xl">
+          <span>💡 Click the caption to select it — drag to move, pull a corner to resize, <b>⊞ Grid</b> for guides. Everything you set here is exactly what gets exported.</span>
+          <button onClick={dismissTip} className="text-slate-400 hover:text-slate-100 font-bold cursor-pointer" title="Dismiss">✕</button>
+        </div>
+      )}
+
       {/* Video Container Area with True Video Aspect Ratio */}
       <div className="flex-1 w-full flex items-center justify-center p-3 sm:p-5 relative overflow-hidden min-h-0">
         <div
@@ -201,35 +322,42 @@ export default function VideoPreview({
             className="w-full h-full object-contain cursor-pointer block"
           />
 
+          {isNegative && (
+            <NegativeTextCanvas
+              videoRef={videoRef}
+              captions={captions}
+              styleConfig={styleConfig}
+              fps={fps}
+              currentTime={currentTime}
+              isPlaying={isPlaying}
+              videoDimensions={videoDimensions}
+              displaySize={displaySize}
+            />
+          )}
+
           {/* Real-time Interactive & Draggable Reels Subtitle Overlay */}
           {currentCaption && (() => {
             const elapsed = Math.max(0, currentTime - currentCaption.start);
-            const trType = styleConfig.transition || 'Fade In + Slide Up';
-
-            let opacity = 1;
-            let slideY = 0;
-            let scale = 1;
-
-            if (trType.includes('Fade In') && trType.includes('Slide Up')) {
-              // Seamless combined Fade In + Slide Up
-              const animDuration = 0.20; // 200ms ultra-smooth transition window
-              const progress = Math.min(1, elapsed / animDuration);
-              opacity = progress;
-              slideY = (1 - progress) * 22; // Slide upward 22px
-            } else if (trType === 'Fade In') {
-              opacity = Math.min(1, elapsed / 0.18);
-            } else if (trType === 'Pop Up') {
-              const progress = Math.min(1, elapsed / 0.18);
-              scale = 0.7 + progress * 0.3;
-              opacity = progress;
-            } else if (trType === 'Zoom Kinetic') {
-              const progress = Math.min(1, elapsed / 0.22);
-              scale = 0.6 + progress * 0.4;
-              opacity = progress;
-            }
+            const plan = TRANSITIONS[styleConfig.transition] || TRANSITIONS['Fade In + Slide Up'];
+            const progress = plan.seconds > 0 ? Math.min(1, elapsed / plan.seconds) : 1;
+            const opacity = plan.fade ? progress : 1;
+            const slideY = plan.slide ? (1 - progress) * SLIDE_UP_PIXELS : 0;
+            const scale = plan.scaleFrom + (1 - plan.scaleFrom) * progress;
+            const k = previewScale;
+            // Fit the widest line to the 85% caption box (measured in unscaled
+            // CSS px, since the box is scaled by k afterwards).
+            const fittedSize = displaySize.width
+              ? fitFontSize(wordsList, styleConfig, (0.85 * displaySize.width) / k)
+              : styleConfig.fontSize || 28;
+            // A fitted caption scales as a whole — letter spacing shrinks with the size.
+            const fitScale = fittedSize / (styleConfig.fontSize || 28);
+            const fitStyle = fitScale < 1
+              ? { ...styleConfig, letterSpacing: (Number(styleConfig.letterSpacing) || 0) * fitScale }
+              : styleConfig;
 
             return (
               <div
+                ref={captionRef}
                 onMouseDown={handleMouseDownDrag}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -243,16 +371,23 @@ export default function VideoPreview({
                 style={{
                   left: `${xPercent}%`,
                   top: `${yPercent}%`,
-                  transform: `translate(-50%, calc(-50% + ${slideY}px)) scale(${scale}) ${styleConfig.flipH ? 'scaleX(-1)' : ''}`,
+                  transform: `translate(-50%, calc(-50% + ${slideY * k}px)) scale(${scale * k}) ${styleConfig.flipH ? 'scaleX(-1)' : ''}`,
                   opacity: opacity,
-                  maxWidth: '85%',
+                  maxWidth: 'none',
                   fontFamily: styleConfig.fontFamily || 'Montserrat',
-                  fontSize: `${styleConfig.fontSize || 28}px`,
+                  fontWeight: nearestFontWeight(styleConfig.fontFamily, styleConfig.fontWeight),
+                  fontSize: `${fittedSize}px`,
+                  // Never let the browser fake a weight the family does not ship —
+                  // the export renders the real file, so the preview must too.
+                  fontSynthesisWeight: 'none',
+                  fontKerning: 'normal',
+                  fontFeatureSettings: '"kern" 1, "liga" 1',
+                  textRendering: 'geometricPrecision',
                   color: styleConfig.color || '#ffffff',
-                  backgroundColor: styleConfig.backgroundColor || 'transparent',
+                  backgroundColor: isNegative ? 'transparent' : (styleConfig.backgroundColor || 'transparent'),
                   padding: `${styleConfig.bgPadding ?? 6}px ${(styleConfig.bgPadding ?? 6) * 1.6}px`,
                   borderRadius: `${styleConfig.bgRadius ?? 12}px`,
-                  mixBlendMode: styleConfig.mixBlendMode || 'normal',
+                  mixBlendMode: isNegative ? 'normal' : (styleConfig.mixBlendMode || 'normal'),
                   willChange: 'transform, opacity',
                 }}
                 title="Click and drag to move subtitle anywhere on video!"
@@ -263,16 +398,31 @@ export default function VideoPreview({
                 className={`absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 rounded-xl px-2 py-1 flex items-center gap-1.5 shadow-2xl text-[11px] font-sans font-bold z-40 transition-opacity whitespace-nowrap pointer-events-auto ${
                   isSelected || isDragging || isResizing ? 'opacity-100' : 'opacity-0 group-hover/caption:opacity-100'
                 }`}
+                style={{ transform: `scale(${1 / k})`, transformOrigin: 'bottom center' }}
               >
                 <span className="text-emerald-400 font-mono text-[10px] pr-1 border-r border-slate-700">
                   {xPercent}% , {yPercent}% &middot; {styleConfig.fontSize || 28}px
                 </span>
 
+                {/* Grid / guides toggle */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowGrid((v) => !v);
+                  }}
+                  title="Show alignment grid & safe area (auto while dragging; hold Shift to drag without snapping)"
+                  className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer border ${
+                    showGrid ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/60' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-transparent'
+                  }`}
+                >
+                  ⊞ Grid
+                </button>
+
                 {/* Size - / + */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onUpdateStyle?.('fontSize', Math.max(14, (styleConfig.fontSize || 28) - 2));
+                    onUpdateStyle?.('fontSize', clampSize((styleConfig.fontSize || 28) - 2));
                   }}
                   title="Decrease text size (A-)"
                   className="w-5 h-5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded flex items-center justify-center cursor-pointer"
@@ -282,7 +432,7 @@ export default function VideoPreview({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onUpdateStyle?.('fontSize', Math.min(64, (styleConfig.fontSize || 28) + 2));
+                    onUpdateStyle?.('fontSize', clampSize((styleConfig.fontSize || 28) + 2));
                   }}
                   title="Increase text size (A+)"
                   className="w-5 h-5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded flex items-center justify-center cursor-pointer"
@@ -323,6 +473,16 @@ export default function VideoPreview({
                 </button>
               </div>
 
+              {/* Interaction hint — counter-scaled like the action bar */}
+              {(isSelected || isResizing) && !isDragging && (
+                <div
+                  className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold text-slate-300 bg-slate-950/80 border border-slate-700/60 px-2 py-0.5 rounded-md pointer-events-none"
+                  style={{ transform: `scale(${1 / k})`, transformOrigin: 'top center' }}
+                >
+                  Drag to move · pull a corner or Ctrl+scroll to resize · Shift = no snap
+                </div>
+              )}
+
               {/* 4 Corner Resize Anchor Handles */}
               {(isSelected || isDragging || isResizing) && (
                 <>
@@ -358,14 +518,15 @@ export default function VideoPreview({
                   <div
                     className="pointer-events-none"
                     style={{
-                      filter: buildShadowFilter(styleConfig),
+                      filter: isNegative ? 'none' : buildShadowFilter(styleConfig),
                       lineHeight: styleConfig.lineHeight ?? 1.05,
+                      visibility: isNegative ? 'hidden' : 'visible',
                     }}
                   >
                     {lines.map((line, lineIdx) => (
                       <div
                         key={lineIdx}
-                        className="flex flex-wrap justify-center items-center gap-x-[0.26em] gap-y-[0.08em] font-black"
+                        className="flex flex-nowrap justify-center items-center gap-x-[0.26em] gap-y-[0.08em] whitespace-nowrap"
                       >
                         {line.map((wObj, i) => {
                           const rawWord = (typeof wObj === 'string' ? wObj : wObj?.word) || '';
@@ -388,7 +549,7 @@ export default function VideoPreview({
                           return (
                             <span
                               key={lineIdx * perLine + i}
-                              style={buildWordStyle(styleConfig, { isActive, isKeyword })}
+                              style={buildWordStyle(fitStyle, { isActive, isKeyword })}
                             >
                               {applyTextTransform(rawWord, styleConfig.textTransform)}
                             </span>
@@ -402,6 +563,14 @@ export default function VideoPreview({
             </div>
           );
         })()}
+
+          <AlignmentGuides
+            visible={isDragging || showGrid}
+            dragging={isDragging}
+            x={xPercent}
+            y={yPercent}
+            snap={snapGuides}
+          />
         </div>
       </div>
 
@@ -409,6 +578,17 @@ export default function VideoPreview({
       <div className="w-full bg-slate-900 border-t border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
         {/* Left: Playback & Step Controls */}
         <div className="flex items-center gap-2">
+          {/* Start from beginning */}
+          <button
+            onClick={() => onSeek(0)}
+            title="Start from beginning (Home)"
+            className="w-9 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition-all cursor-pointer"
+          >
+            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+              <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" />
+            </svg>
+          </button>
+
           {/* Jump -3s */}
           <button
             onClick={() => onSeek(Math.max(0, currentTime - 3))}
@@ -561,4 +741,58 @@ function formatTimecode(sec) {
   const s = Math.floor(sec % 60);
   const ms = Math.floor((sec - Math.floor(sec)) * 10);
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms}`;
+}
+
+
+/**
+ * Alignment overlay: rule-of-thirds + centre grid, the Shorts / Reels safe
+ * area, and a crosshair through the caption's anchor. A guide the caption has
+ * snapped to lights up so the alignment is unambiguous while dragging.
+ */
+function AlignmentGuides({ visible, dragging, x, y, snap }) {
+  if (!visible) return null;
+  const line = (pos, axis, tone) => {
+    const base = axis === 'x'
+      ? { left: `${pos}%`, top: 0, bottom: 0, width: 0 }
+      : { top: `${pos}%`, left: 0, right: 0, height: 0 };
+    const border = axis === 'x' ? 'borderLeft' : 'borderTop';
+    const styles = {
+      grid: { [border]: '1px dashed rgba(255,255,255,0.28)' },
+      snap: { [border]: '1px solid rgba(52,211,153,0.95)', boxShadow: '0 0 6px rgba(52,211,153,0.8)' },
+      cross: { [border]: '1px dashed rgba(34,211,238,0.85)' },
+    };
+    return <div key={`${axis}${pos}${tone}`} className="absolute" style={{ ...base, ...styles[tone] }} />;
+  };
+  return (
+    <div className="absolute inset-0 pointer-events-none z-40 select-none">
+      {X_GUIDES.map((g) => line(g, 'x', snap.x === g ? 'snap' : 'grid'))}
+      {Y_GUIDES.map((g) => line(g, 'y', snap.y === g ? 'snap' : 'grid'))}
+      {/* Safe area */}
+      <div
+        className="absolute rounded-md"
+        style={{
+          left: `${SAFE_AREA.left}%`,
+          top: `${SAFE_AREA.top}%`,
+          width: `${SAFE_AREA.right - SAFE_AREA.left}%`,
+          height: `${SAFE_AREA.bottom - SAFE_AREA.top}%`,
+          border: '1px dashed rgba(250,204,21,0.55)',
+        }}
+      >
+        <span className="absolute -top-4 left-0 text-[9px] font-bold uppercase tracking-wider text-amber-300/90 bg-slate-950/70 px-1 rounded">
+          Shorts / Reels safe area
+        </span>
+      </div>
+      {/* Crosshair through the caption anchor while dragging */}
+      {dragging && snap.x == null && line(x, 'x', 'cross')}
+      {dragging && snap.y == null && line(y, 'y', 'cross')}
+      {dragging && (
+        <span
+          className="absolute text-[10px] font-mono font-bold text-cyan-200 bg-slate-950/80 px-1.5 py-0.5 rounded"
+          style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(12px, 12px)' }}
+        >
+          {x}% , {y}%{snap.x != null || snap.y != null ? ' · snapped' : ''}
+        </span>
+      )}
+    </div>
+  );
 }

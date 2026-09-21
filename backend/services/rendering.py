@@ -9,116 +9,101 @@ Two engines share one style contract with the browser preview:
 
 import os
 import re
-import struct
 import subprocess
 import uuid
-from functools import lru_cache
 
-from PIL import ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 from services.audio import get_ffmpeg_bin, get_video_info
-
-# Canonical font family mapping
-FONT_FAMILY_MAP = {
-    "montserrat": "Montserrat",
-    "anton": "Anton",
-    "rubik": "Rubik",
-    "plus jakarta sans": "Plus Jakarta Sans",
-    "plusjakartasans": "Plus Jakarta Sans",
-    "outfit": "Outfit",
-    "bebas neue": "Bebas Neue",
-    "bebasneue": "Bebas Neue",
-    "syne": "Syne",
-    "oswald": "Oswald",
-    "inter": "Inter",
-    "bai jamjuree": "Bai Jamjuree",
-    "baijamjuree": "Bai Jamjuree",
-    "satoshi": "Satoshi",
-    "playfair display": "Playfair Display",
-    "playfairdisplay": "Playfair Display",
-}
+from services.fonts import read_face, resolve_face
 
 TRANSITION_SECONDS = 0.18
 SLIDE_UP_PIXELS = 22.0
-# The bundled families ship upright faces only. Asking LibASS for Italic makes it
-# swap to a whole different system family, so both engines shear instead.
+# The preview caption box is capped at 85% of the frame width; both export
+# engines wrap / fit to the same limit so line breaks land where the editor showed them.
+CAPTION_MAX_WIDTH = 0.85
+# Families without a real italic face are sheared, like the browser's synthetic
+# oblique (Skia skews by exactly 1/4).
 ITALIC_SHEAR = 0.25
 
+# Entry transitions, exactly as the preview overlay animates them (VideoPreview.jsx):
+# opacity ramps when `fade`, the block rises SLIDE_UP_PIXELS when `slide`, and
+# `scale_from` → 1.0 about the block centre for the kinetic pops.
+TRANSITIONS = {
+    "Fade In + Slide Up": {"fade": True, "slide": True, "scale_from": 1.0, "seconds": 0.18},
+    "Slide Up": {"fade": False, "slide": True, "scale_from": 1.0, "seconds": 0.18},
+    "Fade In": {"fade": True, "slide": False, "scale_from": 1.0, "seconds": 0.18},
+    "Pop Up": {"fade": True, "slide": False, "scale_from": 0.7, "seconds": 0.18},
+    "Zoom Kinetic": {"fade": True, "slide": False, "scale_from": 0.6, "seconds": 0.22},
+    "None": {"fade": False, "slide": False, "scale_from": 1.0, "seconds": 0.0},
+}
 
-@lru_cache(maxsize=64)
+
+def transition_plan(transition):
+    """Resolves a `transition` style value into what each engine must animate."""
+    plan = dict(TRANSITIONS.get(transition or "Fade In + Slide Up") or TRANSITIONS["None"])
+    plan["pops"] = plan["scale_from"] < 1.0
+    plan["animates"] = plan["fade"] or plan["slide"] or plan["pops"]
+    return plan
+
+
+def entry_motion_tags(plan, pos_x, pos_y, slide_start_y, flip_tag, first_segment):
+    r"""
+    ASS override tags positioning a caption line and, on the caption's first
+    karaoke segment, playing its entry transition: \fad for the fade, \move
+    for the rise and an \fscx/\fscy \t() ramp for the kinetic pops.
+    """
+    # \q2: never wrap — lines are fitted to the caption box up front (fit_shrink),
+    # exactly like the preview's nowrap rows.
+    if not first_segment or not plan["animates"]:
+        return f"\\an5\\q2\\pos({pos_x},{pos_y}){flip_tag}"
+    ms = int(round(plan["seconds"] * 1000))
+    tag = "\\an5\\q2"
+    if plan["slide"]:
+        tag += f"\\move({pos_x},{slide_start_y},{pos_x},{pos_y},0,{ms})"
+    else:
+        tag += f"\\pos({pos_x},{pos_y})"
+    if plan["fade"]:
+        tag += f"\\fad({ms},0)"
+    if plan["pops"]:
+        start = int(round(plan["scale_from"] * 100))
+        tag += f"\\fscx{start}\\fscy{start}\\t(0,{ms},\\fscx100\\fscy100)"
+    return tag + flip_tag
+
+
+def scale_ramp_tags(plan, target_pct, first_segment):
+    r"""
+    \fscx/\fscy tags for a word run whose resting scale is `target_pct`. While
+    a pop plays, the run starts at scale_from × target and ramps up with the
+    block so the karaoke pop and the entry pop compose instead of fighting.
+    """
+    if first_segment and plan["pops"]:
+        ms = int(round(plan["seconds"] * 1000))
+        start = int(round(plan["scale_from"] * target_pct))
+        return f"\\fscx{start}\\fscy{start}\\t(0,{ms},\\fscx{target_pct}\\fscy{target_pct})"
+    if target_pct == 100:
+        return "\\fscx100\\fscy100"
+    return f"\\fscx{target_pct}\\fscy{target_pct}"
+
+
 def _ttf_info(path: str) -> dict:
-    """
-    Reads the two things LibASS needs from a TTF that cannot be guessed.
-
-    `family` is name record 1, which LibASS matches styles on — not always the
-    marketing name (PlayfairDisplay-Black.ttf calls itself "Playfair Display
-    Black", so asking for "Playfair Display" silently falls back to a system font).
-
-    `size_ratio` converts a CSS pixel size into an ASS Fontsize. The browser sizes
-    text by the em square; LibASS sizes it by winAscent+winDescent, so without this
-    the export renders up to 40% smaller than the preview, by differing amounts per
-    font. Verified to land within 1% of the browser across the bundled families.
-    """
-    info = {"family": None, "size_ratio": 1.0, "win_asc": 0.0, "win_desc": 0.0, "upem": 1000}
-    try:
-        with open(path, "rb") as fh:
-            data = fh.read()
-        tables = {}
-        for i in range(struct.unpack(">H", data[4:6])[0]):
-            rec = 12 + 16 * i
-            tables[data[rec:rec + 4]] = struct.unpack(">I", data[rec + 8:rec + 12])[0]
-
-        if b"name" in tables:
-            off = tables[b"name"]
-            count, strings = struct.unpack(">HH", data[off + 2:off + 6])
-            for i in range(count):
-                rec = off + 6 + 12 * i
-                pid, _, _, nid, length, str_off = struct.unpack(">HHHHHH", data[rec:rec + 12])
-                if pid == 3 and nid == 1:
-                    start = off + strings + str_off
-                    info["family"] = data[start:start + length].decode("utf-16-be").strip()
-                    break
-
-        if b"head" in tables and b"OS/2" in tables:
-            upem = struct.unpack(">H", data[tables[b"head"] + 18:tables[b"head"] + 20])[0]
-            win_asc, win_desc = struct.unpack(">HH", data[tables[b"OS/2"] + 74:tables[b"OS/2"] + 78])
-            if upem > 0 and (win_asc + win_desc) > 0:
-                info["size_ratio"] = (win_asc + win_desc) / upem
-                info.update(win_asc=win_asc, win_desc=win_desc, upem=upem)
-    except (OSError, struct.error, UnicodeDecodeError, KeyError):
-        pass
-    return info
+    """Face metrics for LibASS sizing (kept for callers of the old helper)."""
+    return read_face(path)
 
 
-def get_ass_font_name(font_name: str) -> str:
-    """Returns the family name LibASS will actually match for this font."""
-    canonical = FONT_FAMILY_MAP.get((font_name or "").strip().lower(), (font_name or "Montserrat").strip())
-    return _ttf_info(resolve_font_path(font_name))["family"] or canonical
+def style_face(style: dict, family_key: str = "fontFamily") -> dict:
+    """The font file a style renders with: family + fontWeight + italic → face."""
+    return resolve_face(style.get(family_key) or "Montserrat", style.get("fontWeight"), bool(style.get("italic")))
 
 
-def resolve_font_path(font_name: str) -> str:
-    """Finds exact matching TTF file in backend/fonts directory."""
-    fonts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fonts"))
-    clean = (font_name or "Montserrat").strip()
-    canonical = FONT_FAMILY_MAP.get(clean.lower(), clean)
-    clean_no_space = canonical.replace(" ", "")
+def resolve_font_path(font_name: str, weight=None, italic=False) -> str:
+    """Path of the best matching file in backend/fonts (nearest weight, real italic if any)."""
+    return resolve_face(font_name, weight, italic)["path"]
 
-    candidates = [
-        f"{canonical}.ttf",
-        f"{clean_no_space}.ttf",
-        f"{clean_no_space}-Bold.ttf",
-        f"{clean_no_space}-ExtraBold.ttf",
-        f"{clean_no_space}-Black.ttf",
-        f"{clean_no_space}-Regular.ttf",
-        f"{clean}.ttf",
-    ]
-    for cand in candidates:
-        p = os.path.join(fonts_dir, cand)
-        if os.path.exists(p):
-            return p
 
-    fallback = os.path.join(fonts_dir, "Montserrat.ttf")
-    return fallback if os.path.exists(fallback) else os.path.join(fonts_dir, "Anton.ttf")
+def get_ass_font_name(font_name: str, weight=None, italic=False) -> str:
+    """The family name LibASS matches for this face (name ID 1, e.g. 'Poppins Black')."""
+    return resolve_face(font_name, weight, italic)["ass_family"]
 
 
 def hex_to_ass_color(hex_str: str, alpha: str = "00") -> str:
@@ -201,6 +186,25 @@ def wrap_into_lines(words: list, max_per_line) -> list:
     return [words[i:i + per] for i in range(0, len(words), per)] or [[]]
 
 
+def fit_shrink(words, style, font, em_px, limit_px) -> float:
+    """
+    Shrink factor (≤ 1) that fits the widest caption line inside `limit_px`.
+    Mirrors fitFontSize() in captionStyle.js: word widths from the font, a
+    0.26em gap between words, letter-spacing after every character.
+    """
+    # letterSpacing is a design px value; em_px / fontSize is the design → video px scale.
+    spacing = float(style.get("letterSpacing", 0) or 0) * (em_px / max(1.0, float(style.get("fontSize", 32) or 32)))
+    draw = ImageDraw.Draw(Image.new("L", (1, 1)))
+    widest = 0.0
+    for line in wrap_into_lines(words, style.get("maxWordsPerLine", 3)):
+        width = sum(draw.textlength(w["text"], font=font) + spacing * len(w["text"]) for w in line)
+        width += 0.26 * em_px * max(0, len(line) - 1)
+        widest = max(widest, width)
+    if widest <= limit_px or widest <= 0:
+        return 1.0
+    return max(0.2, limit_px / widest)
+
+
 def is_keyword(word_text: str, keywords) -> bool:
     """Word-boundary safe keyword match (so 'IT' never matches inside 'WITH')."""
     if not keywords:
@@ -273,7 +277,7 @@ def _draw_run(draw, x, baseline, text, font, spacing, fill, stroke_width=0, stro
         cx += draw.textlength(ch, font=font) + spacing
 
 
-def _build_caption_layer(words, active_idx, keywords, style, font, scale):
+def _build_caption_layer(words, active_idx, keywords, style, font, scale, max_width=None):
     """
     Rasterises one caption state into a tight RGBA tile.
 
@@ -314,7 +318,7 @@ def _build_caption_layer(words, active_idx, keywords, style, font, scale):
     accent_font = font
     accent_name = style.get("accentFontFamily")
     if accent_name and accent_name != style.get("fontFamily"):
-        accent_font = ImageFont.truetype(resolve_font_path(accent_name), font.size)
+        accent_font = ImageFont.truetype(resolve_font_path(accent_name, style.get("fontWeight")), font.size)
 
     active_scale = float(style.get("activeScale", 1.14) or 1.0) if use_karaoke else 1.0
 
@@ -339,6 +343,15 @@ def _build_caption_layer(words, active_idx, keywords, style, font, scale):
         measured.append({"widths": widths, "total": sum(widths) + space_w * max(0, len(row) - 1)})
 
     block_w = max([m["total"] for m in measured] or [1])
+
+    # Shrink-to-fit: a line wider than the caption box (85% of the frame) scales
+    # the whole tile down instead of running off the edge of the video.
+    if max_width and block_w > max_width:
+        shrink = max_width / block_w
+        smaller = font.font_variant(size=max(8, int(round(font.size * shrink))))
+        if smaller.size < font.size:
+            fitted = {**style, "letterSpacing": float(style.get("letterSpacing", 0) or 0) * shrink}
+            return _build_caption_layer(words, active_idx, keywords, fitted, smaller, scale, None)
     block_h = line_step * len(lines)
 
     # Padding absorbs stroke, the highlight box and any active-word upscale.
@@ -507,16 +520,16 @@ def render_difference_blend_video(
 
     scale = (height / 520.0) if height >= width else (width / 640.0)
     font_px = max(12, int(round(float(style_config.get("fontSize", 32)) * scale)))
-    font = ImageFont.truetype(resolve_font_path(style_config.get("fontFamily", "Montserrat")),
-                              font_px * SUPERSAMPLE)
+    face = style_face(style_config)
+    font = ImageFont.truetype(face["path"], font_px * SUPERSAMPLE)
+    # A real italic face needs no shear; the tile builder shears only synthetic italics.
+    style_config = {**style_config, "italic": face["synth_italic"]}
 
     pos_x = int(round(width * float(style_config.get("xPercent", 50)) / 100.0))
     pos_y = int(round(height * float(style_config.get("yPercent", 82)) / 100.0))
 
-    transition = style_config.get("transition", "Fade In + Slide Up")
-    fades = "Fade In" in transition
-    slides = "Slide Up" in transition
-    trans_frames = max(1, int(round(fps * TRANSITION_SECONDS)))
+    plan = transition_plan(style_config.get("transition", "Fade In + Slide Up"))
+    trans_frames = max(1, int(round(fps * plan["seconds"])))
     slide_px = SLIDE_UP_PIXELS * (height / 1920.0) if height >= width else SLIDE_UP_PIXELS
 
     # Build the segment timeline up front; rasterise each tile on first use.
@@ -539,7 +552,8 @@ def render_difference_blend_video(
             if len(tile_cache) > 6:
                 tile_cache.clear()
             tile_cache[key] = _build_caption_layer(
-                seg["words"], seg["active"], seg["keywords"], style_config, font, scale
+                seg["words"], seg["active"], seg["keywords"], style_config, font, scale,
+                max_width=width * CAPTION_MAX_WIDTH * SUPERSAMPLE,
             )
         return tile_cache[key]
 
@@ -572,9 +586,17 @@ def render_difference_blend_video(
             rgb, alpha, tw, th = get_tile(seg)
 
             entry = frame_idx - seg["caption_start"]
-            progress = min(1.0, max(0.0, entry / float(trans_frames)))
-            opacity = progress if fades else 1.0
-            offset_y = int(round((1.0 - progress) * slide_px)) if slides else 0
+            progress = 1.0 if not plan["animates"] else min(1.0, max(0.0, entry / float(trans_frames)))
+            opacity = progress if plan["fade"] else 1.0
+            offset_y = int(round((1.0 - progress) * slide_px)) if plan["slide"] else 0
+
+            # Kinetic pops scale the whole tile about its centre, like CSS transform: scale().
+            if plan["pops"] and progress < 1.0:
+                k = plan["scale_from"] + (1.0 - plan["scale_from"]) * progress
+                sw, sh = max(1, int(round(tw * k))), max(1, int(round(th * k)))
+                rgb = cv2.resize(rgb, (sw, sh), interpolation=cv2.INTER_AREA)
+                alpha = cv2.resize(alpha, (sw, sh), interpolation=cv2.INTER_AREA)
+                tw, th = sw, sh
 
             composite_difference(frame, rgb, alpha,
                                  pos_x - tw // 2, pos_y - th // 2 + offset_y, opacity)
@@ -619,9 +641,17 @@ def render_captioned_video(
     resolution: str = "original",
 ) -> str:
     """
-    Renders video with burned-in captions. Difference blending routes to the
-    pixel compositor; everything else burns in through LibASS.
+    Renders video with burned-in captions. The Negative Text renderer and
+    difference blending route to the pixel compositors; everything else burns
+    in through LibASS.
     """
+    if style_config.get("renderer") == "negative":
+        from services.negative_text import render_negative_text_video
+        return render_negative_text_video(
+            video_path=video_path, captions=captions, style_config=style_config,
+            output_dir=output_dir, resolution=resolution,
+        )
+
     if style_config.get("mixBlendMode") == "difference":
         try:
             return render_difference_blend_video(
@@ -636,10 +666,16 @@ def render_captioned_video(
     vid_h = int(v_info.get("height", 1920))
     scale = (vid_h / 520.0) if vid_h >= vid_w else (vid_w / 640.0)
 
-    font_path = resolve_font_path(style_config.get("fontFamily", "Montserrat"))
-    ass_font_name = get_ass_font_name(style_config.get("fontFamily", "Montserrat"))
+    face = style_face(style_config)
+    font_path = face["path"]
+    ass_font_name = face["ass_family"]
+    # Bold / Italic come from the face itself: asking LibASS for Bold on a face
+    # that is not flagged bold makes it embolden the outlines (+9–15% ink on
+    # Anton / Bebas Neue), which the browser never does.
+    ass_bold = -1 if face["bold"] else 0
+    ass_italic = -1 if face["italic"] else 0
     em_px = float(style_config.get("fontSize", 32)) * scale
-    ass_font_size = max(12, int(round(em_px * _ttf_info(font_path)["size_ratio"])))
+    ass_font_size = max(12, int(round(em_px * face["size_ratio"])))
 
     text_color = hex_to_ass_color(style_config.get("color", "#FFFFFF"))
     highlight_color = hex_to_ass_color(style_config.get("highlightColor", "#facc15"))
@@ -663,14 +699,19 @@ def render_captioned_video(
 
     shadow_type = style_config.get("shadowType", "cinematic")
     is_glow = shadow_type == "glow"
+    # A "cinematic" shadow is a *blurred* drop shadow in the preview. LibASS's
+    # \shad is always crisp, so it is drawn as two blurred text layers under the
+    # crisp text instead — the same two-pass drop-shadow buildShadowFilter() uses.
+    is_soft = shadow_type == "cinematic" and float(style_config.get("shadowBlur", 14) or 0) > 0 \
+        and float(style_config.get("shadowOpacity", 0.9) or 0) > 0
 
     ass_stroke = max(0, int(round(float(style_config.get("strokeWidth", 3.5)) * scale * 0.9)))
-    if is_glow or shadow_type == "none":
+    if is_glow or is_soft or shadow_type == "none":
         ass_shadow = 0
     else:
         ass_shadow = max(0, int(round(float(style_config.get("shadowDistance", 4)) * scale * 0.8)))
     spacing = round(float(style_config.get("letterSpacing", 0) or 0) * scale, 1)
-    italic_tag = f"\\fax{ITALIC_SHEAR}" if style_config.get("italic") else ""
+    italic_tag = f"\\fax{ITALIC_SHEAR}" if face["synth_italic"] else ""
 
     use_card = style_config.get("borderStyle") == 3 and \
         style_config.get("backgroundColor") not in (None, "", "transparent")
@@ -682,17 +723,35 @@ def render_captioned_video(
         back_colour = hex_to_ass_color(style_config.get("shadowColor", "#000000"), alpha="20")
         outline = ass_stroke
 
+    # Margins leave exactly the preview's 85% caption box for wrapping.
+    margin_lr = int(round(vid_w * (1.0 - CAPTION_MAX_WIDTH) / 2.0))
+
     style_fmt = ("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
                  "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
                  "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding")
 
     ass_styles = [
         f"Style: Default,{ass_font_name},{ass_font_size},{text_color},&H000000FF,{stroke_color},"
-        f"{back_colour},-1,0,0,0,100,100,{spacing},0,{border_style},{outline},{ass_shadow},5,40,40,40,1",
+        f"{back_colour},{ass_bold},{ass_italic},0,0,100,100,{spacing},0,{border_style},{outline},{ass_shadow},5,{margin_lr},{margin_lr},40,1",
         # Opaque-box style used to paint the karaoke highlight behind a single word.
         f"Style: HiBox,{ass_font_name},{ass_font_size},{box_text_color},&H000000FF,{box_color},"
-        f"{box_color},-1,0,0,0,100,100,{spacing},0,3,{max(2, int(round(4 * scale)))},0,5,40,40,40,1",
+        f"{box_color},{ass_bold},{ass_italic},0,0,100,100,{spacing},0,3,{max(2, int(round(4 * scale)))},0,5,{margin_lr},{margin_lr},40,1",
     ]
+
+    soft_passes = []
+    if is_soft:
+        sh_color = hex_to_ass_color(style_config.get("shadowColor") or "#000000", alpha="00")
+        sh_blur = float(style_config.get("shadowBlur", 14) or 14) * scale * 0.5   # CSS blur radius → sigma
+        sh_dist = float(style_config.get("shadowDistance", 4) or 0) * scale
+        sh_opacity = float(style_config.get("shadowOpacity", 0.9) or 0.9)
+        for dy, blur, opacity in ((sh_dist, sh_blur, sh_opacity), (sh_dist * 1.5, sh_blur * 1.6, sh_opacity * 0.6)):
+            alpha_hex = f"{max(0, min(255, int(round((1.0 - min(1.0, opacity)) * 255)))):02X}"
+            soft_passes.append({"dy": int(round(dy)), "blur": round(max(0.5, blur), 1), "alpha": alpha_hex})
+        # Shadow glyphs carry the same outline as the text so the silhouette matches.
+        ass_styles.append(
+            f"Style: ShadowSoft,{ass_font_name},{ass_font_size},{sh_color},&H000000FF,{sh_color},"
+            f"&H00000000,{ass_bold},{ass_italic},0,0,100,100,{spacing},0,1,{ass_stroke},0,5,{margin_lr},{margin_lr},40,1"
+        )
 
     if is_glow:
         glow_color_hex = style_config.get("shadowColor") or style_config.get("highlightColor") or "#ffd700"
@@ -709,15 +768,15 @@ def render_captioned_video(
 
         ass_styles.extend([
             f"Style: GlowOuter,{ass_font_name},{ass_font_size},{glow_ass_color},&H000000FF,{glow_ass_color},"
-            f"&H00000000,-1,0,0,0,100,100,{spacing},0,1,{bord_outer},0,5,40,40,40,1",
+            f"&H00000000,{ass_bold},{ass_italic},0,0,100,100,{spacing},0,1,{bord_outer},0,5,{margin_lr},{margin_lr},40,1",
             f"Style: GlowInner,{ass_font_name},{ass_font_size},{glow_ass_color},&H000000FF,{glow_ass_color},"
-            f"&H00000000,-1,0,0,0,100,100,{spacing},0,1,{bord_inner},0,5,40,40,40,1",
+            f"&H00000000,{ass_bold},{ass_italic},0,0,100,100,{spacing},0,1,{bord_inner},0,5,{margin_lr},{margin_lr},40,1",
         ])
 
     ass_lines = [
         "[Script Info]", "ScriptType: v4.00+",
         f"PlayResX: {vid_w}", f"PlayResY: {vid_h}",
-        "ScaledBorderAndShadow: yes", "WrapStyle: 0", "",
+        "ScaledBorderAndShadow: yes", "WrapStyle: 1", "",
         "[V4+ Styles]", style_fmt,
         *ass_styles,
         "", "[Events]",
@@ -726,32 +785,50 @@ def render_captioned_video(
 
     highlight_mode = style_config.get("highlightMode", "color")
     flip_tag = ("\\fry180" if style_config.get("flipH") else "") + italic_tag
-    transition = style_config.get("transition", "Fade In + Slide Up")
-    fades = "Fade In" in transition
-    slides = "Slide Up" in transition
-    trans_ms = int(TRANSITION_SECONDS * 1000)
+    plan = transition_plan(style_config.get("transition", "Fade In + Slide Up"))
     slide_start_y = pos_y + max(10, int(round(SLIDE_UP_PIXELS * (vid_h / 1920.0))))
 
     active_pct = int(round(float(style_config.get("activeScale", 1.14) or 1.0) * 100))
 
     # Font pairing: the emphasised word switches family mid-line. Each family needs
     # its own \\fs because the CSS-pixel to ASS-Fontsize ratio is per-font.
-    accent_on = accent_off = ""
     accent_family = style_config.get("accentFontFamily")
+    accent_face = None
     if accent_family and accent_family != style_config.get("fontFamily"):
-        accent_size = max(12, int(round(em_px * _ttf_info(resolve_font_path(accent_family))["size_ratio"])))
-        accent_on = f"\\fn{get_ass_font_name(accent_family)}\\fs{accent_size}"
-        accent_off = f"\\fn{ass_font_name}\\fs{ass_font_size}"
+        accent_face = resolve_face(accent_family, style_config.get("fontWeight"), bool(style_config.get("italic")))
+    fit_limit = vid_w * CAPTION_MAX_WIDTH
 
-    def emphasis_tags(active):
+    def caption_font_tags(shrink):
+        """
+        Per-caption font tags: (\\fs override for a shrunk caption, accent-on, accent-off).
+        A caption wider than the 85% box is scaled down as one unit, so the
+        pairing font shrinks by the same factor.
+        """
+        size = max(12, int(round(ass_font_size * shrink)))
+        # The fitted caption scales as a whole: font size AND letter spacing.
+        fs_tag = f"\\fs{size}\\fsp{round(spacing * shrink, 1)}" if size != ass_font_size else ""
+        if accent_face is None:
+            return fs_tag, "", f"\\fs{size}" if fs_tag else ""
+        accent_size = max(12, int(round(em_px * shrink * accent_face["size_ratio"])))
+        # Each face carries its own bold flag; \\b switches LibASS between them without emboldening.
+        on = f"\\fn{accent_face['ass_family']}\\fs{accent_size}\\b{1 if accent_face['bold'] else 0}"
+        off = f"\\fn{ass_font_name}\\fs{size}\\b{1 if face['bold'] else 0}"
+        return fs_tag, on, off
+
+    def emphasis_tags(active, first_segment=False, fonts=("", "", "")):
         """Override tags for an emphasised word, and the tags restoring the base run."""
+        fs_tag, accent_on, accent_off = fonts
         on, off = [], []
         if accent_on:
             on.append(accent_on)
             off.append(accent_off)
+        elif fs_tag and highlight_mode == "box":
+            # \r resets the font size; a shrunk caption must re-apply it.
+            on.append(fs_tag)
+            off.append(fs_tag)
         if active and active_pct != 100:
-            on.append(f"\\fscx{active_pct}\\fscy{active_pct}")
-            off.append("\\fscx100\\fscy100")
+            on.append(scale_ramp_tags(plan, active_pct, first_segment))
+            off.append(scale_ramp_tags(plan, 100, first_segment))
 
         if highlight_mode == "box":
             # \r swaps styles wholesale, so the pairing font is re-applied after it.
@@ -776,6 +853,8 @@ def render_captioned_video(
         keywords = c.get("keywords") or []
         per_line = max(1, int(style_config.get("maxWordsPerLine", 3) or 3))
         segments = highlight_segments(c, words, style_config, fps_hint)
+        fonts = caption_font_tags(fit_shrink(words, style_config, _pil, em_px, fit_limit))
+        fs_tag, accent_on, accent_off = fonts
 
         for seg_idx, seg in enumerate(segments):
             t_start = _sec_to_ass_time(seg["start_frame"] / fps_hint)
@@ -790,40 +869,44 @@ def render_captioned_video(
                     text = word["text"]
                     active = style_config.get("karaoke", True) and li * per_line + wi == seg["active"]
                     if active or is_keyword(text, keywords):
-                        open_tag, close_tag = emphasis_tags(active)
+                        open_tag, close_tag = emphasis_tags(active, seg_idx == 0, fonts)
                         parts.append(f"{open_tag}{text}{close_tag}")
                     else:
                         parts.append(text)
 
-                    if is_glow:
+                    if is_glow or is_soft:
                         g_open, g_close = [], []
                         if accent_on:
                             g_open.append(accent_on)
                             g_close.append(accent_off)
                         if active and active_pct != 100:
-                            g_open.append(f"\\fscx{active_pct}\\fscy{active_pct}")
-                            g_close.append("\\fscx100\\fscy100")
+                            g_open.append(scale_ramp_tags(plan, active_pct, seg_idx == 0))
+                            g_close.append(scale_ramp_tags(plan, 100, seg_idx == 0))
                         if g_open:
                             glow_parts.append(f"{{{ ''.join(g_open) }}}{text}{{{ ''.join(g_close) }}}")
                         else:
                             glow_parts.append(text)
 
                 rendered_lines.append(" ".join(parts))
-                if is_glow:
+                if is_glow or is_soft:
                     glow_lines.append(" ".join(glow_parts))
 
             body = "\\N".join(rendered_lines)
-            glow_body = "\\N".join(glow_lines) if is_glow else ""
+            glow_body = "\\N".join(glow_lines) if (is_glow or is_soft) else ""
 
             # The entry animation belongs to the caption, not each karaoke step.
-            if seg_idx == 0 and fades and slides:
-                motion_tag = f"\\an5\\fad({trans_ms},0)\\move({pos_x},{slide_start_y},{pos_x},{pos_y},0,{trans_ms}){flip_tag}"
-            elif seg_idx == 0 and fades:
-                motion_tag = f"\\an5\\pos({pos_x},{pos_y})\\fad({trans_ms},0){flip_tag}"
-            else:
-                motion_tag = f"\\an5\\pos({pos_x},{pos_y}){flip_tag}"
+            motion_tag = entry_motion_tags(plan, pos_x, pos_y, slide_start_y, flip_tag, seg_idx == 0) + fs_tag
 
-            if is_glow:
+            if is_soft:
+                # Blurred shadow copies first (lower layers), offset straight down like drop-shadow(0 dist blur).
+                for layer, sp in enumerate(soft_passes):
+                    sh_motion = entry_motion_tags(plan, pos_x, pos_y + sp["dy"], slide_start_y + sp["dy"], flip_tag, seg_idx == 0) + fs_tag
+                    ass_lines.append(
+                        f"Dialogue: {layer},{t_start},{t_end},ShadowSoft,,0,0,0,,"
+                        f"{{{sh_motion}\\blur{sp['blur']}\\alpha&H{sp['alpha']}&}}{glow_body}"
+                    )
+                ass_lines.append(f"Dialogue: 2,{t_start},{t_end},Default,,0,0,0,,{{{motion_tag}}}{body}")
+            elif is_glow:
                 tags_outer = f"{{{motion_tag}\\blur{blur_outer}\\alpha&H{outer_alpha_hex}&}}"
                 tags_inner = f"{{{motion_tag}\\blur{blur_inner}\\alpha&H{inner_alpha_hex}&}}"
                 tags_default = f"{{{motion_tag}}}"

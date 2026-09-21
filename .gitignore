@@ -43,3 +43,11 @@ frontend/dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Training Pipeline — Fine-Tuned Models & Data (NEVER COMMIT)
+training/data/processed/
+training/models/
+training/data/*.csv
+*.safetensors
+*.bin
+.cache/huggingface/

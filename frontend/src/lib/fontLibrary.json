@@ -1,0 +1,304 @@
+{
+  "categories": {
+    "impact": "Impact & Viral",
+    "clean": "Clean & Modern",
+    "editorial": "Aesthetic & Editorial"
+  },
+  "fonts": [
+    {
+      "family": "Anton",
+      "category": "impact",
+      "tagline": "Hormozi punch",
+      "weights": [
+        400
+      ],
+      "italics": [],
+      "defaultWeight": 400
+    },
+    {
+      "family": "Archivo Black",
+      "category": "impact",
+      "tagline": "Viral headline",
+      "weights": [
+        400
+      ],
+      "italics": [],
+      "defaultWeight": 400
+    },
+    {
+      "family": "Bebas Neue",
+      "category": "impact",
+      "tagline": "Tall condensed",
+      "weights": [
+        400
+      ],
+      "italics": [],
+      "defaultWeight": 400
+    },
+    {
+      "family": "Dela Gothic One",
+      "category": "impact",
+      "tagline": "Heavy poster",
+      "weights": [
+        400
+      ],
+      "italics": [],
+      "defaultWeight": 400
+    },
+    {
+      "family": "Kanit",
+      "category": "impact",
+      "tagline": "Sharp & loud",
+      "weights": [
+        700,
+        800,
+        900
+      ],
+      "italics": [],
+      "defaultWeight": 900
+    },
+    {
+      "family": "League Spartan",
+      "category": "impact",
+      "tagline": "Geometric black",
+      "weights": [
+        700,
+        800,
+        900
+      ],
+      "italics": [],
+      "defaultWeight": 900
+    },
+    {
+      "family": "Lilita One",
+      "category": "impact",
+      "tagline": "Rounded pop",
+      "weights": [
+        400
+      ],
+      "italics": [],
+      "defaultWeight": 400
+    },
+    {
+      "family": "Oswald",
+      "category": "impact",
+      "tagline": "Classic title",
+      "weights": [
+        700
+      ],
+      "italics": [],
+      "defaultWeight": 700
+    },
+    {
+      "family": "Unbounded",
+      "category": "impact",
+      "tagline": "Future wide",
+      "weights": [
+        700,
+        800,
+        900
+      ],
+      "italics": [],
+      "defaultWeight": 900
+    },
+    {
+      "family": "Inter",
+      "category": "clean",
+      "tagline": "Minimal UI",
+      "weights": [
+        700,
+        800,
+        900
+      ],
+      "italics": [],
+      "defaultWeight": 900
+    },
+    {
+      "family": "Montserrat",
+      "category": "clean",
+      "tagline": "Viral Reels",
+      "weights": [
+        700,
+        800,
+        900
+      ],
+      "italics": [],
+      "defaultWeight": 900
+    },
+    {
+      "family": "Outfit",
+      "category": "clean",
+      "tagline": "Sleek geometric",
+      "weights": [
+        700,
+        800,
+        900
+      ],
+      "italics": [],
+      "defaultWeight": 900
+    },
+    {
+      "family": "Plus Jakarta Sans",
+      "category": "clean",
+      "tagline": "Modern",
+      "weights": [
+        700,
+        800
+      ],
+      "italics": [],
+      "defaultWeight": 800
+    },
+    {
+      "family": "Poppins",
+      "category": "clean",
+      "tagline": "Creator classic",
+      "weights": [
+        700,
+        800,
+        900
+      ],
+      "italics": [
+        900
+      ],
+      "defaultWeight": 900
+    },
+    {
+      "family": "Rubik",
+      "category": "clean",
+      "tagline": "Smooth bold",
+      "weights": [
+        700,
+        800,
+        900
+      ],
+      "italics": [],
+      "defaultWeight": 900
+    },
+    {
+      "family": "Satoshi",
+      "category": "clean",
+      "tagline": "Premium grotesk",
+      "weights": [
+        700,
+        900
+      ],
+      "italics": [
+        700
+      ],
+      "defaultWeight": 900
+    },
+    {
+      "family": "Space Grotesk",
+      "category": "clean",
+      "tagline": "Tech grotesk",
+      "weights": [
+        500,
+        700
+      ],
+      "italics": [],
+      "defaultWeight": 700
+    },
+    {
+      "family": "Bai Jamjuree",
+      "category": "editorial",
+      "tagline": "Tech display",
+      "weights": [
+        700
+      ],
+      "italics": [],
+      "defaultWeight": 700
+    },
+    {
+      "family": "Bodoni Moda",
+      "category": "editorial",
+      "tagline": "Vogue serif",
+      "weights": [
+        700
+      ],
+      "italics": [
+        600
+      ],
+      "defaultWeight": 700
+    },
+    {
+      "family": "Clash Display",
+      "category": "editorial",
+      "tagline": "Fashion display",
+      "weights": [
+        500,
+        600,
+        700
+      ],
+      "italics": [],
+      "defaultWeight": 700
+    },
+    {
+      "family": "Cormorant Garamond",
+      "category": "editorial",
+      "tagline": "Whisper serif",
+      "weights": [
+        600,
+        700
+      ],
+      "italics": [
+        600
+      ],
+      "defaultWeight": 700
+    },
+    {
+      "family": "DM Serif Display",
+      "category": "editorial",
+      "tagline": "Quote serif",
+      "weights": [
+        400
+      ],
+      "italics": [
+        400
+      ],
+      "defaultWeight": 400
+    },
+    {
+      "family": "Instrument Serif",
+      "category": "editorial",
+      "tagline": "Aesthetic serif",
+      "weights": [
+        400
+      ],
+      "italics": [
+        400
+      ],
+      "defaultWeight": 400
+    },
+    {
+      "family": "Italiana",
+      "category": "editorial",
+      "tagline": "Thin couture",
+      "weights": [
+        400
+      ],
+      "italics": [],
+      "defaultWeight": 400
+    },
+    {
+      "family": "Playfair Display",
+      "category": "editorial",
+      "tagline": "Luxe serif",
+      "weights": [
+        900
+      ],
+      "italics": [],
+      "defaultWeight": 900
+    },
+    {
+      "family": "Syne",
+      "category": "editorial",
+      "tagline": "Edgy creator",
+      "weights": [
+        700,
+        800
+      ],
+      "italics": [],
+      "defaultWeight": 800
+    }
+  ]
+}

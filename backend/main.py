@@ -123,6 +123,7 @@ async def process_video(
             "filename": file.filename,
             "duration": video_info["duration"],
             "resolution": f"{video_info['width']}x{video_info['height']}",
+            "fps": video_info.get("fps") or 30.0,
             "source_language": source_lang,
             "target_language": target_language,
             "captions": captions,

@@ -7,23 +7,24 @@ import { useState } from 'react';
 import {
   TEMPLATE_PRESETS,
   TEMPLATE_CATEGORIES,
+  FONT_LIBRARY,
+  FONT_CATEGORIES,
+  WEIGHT_LABELS,
+  fontInfo,
+  nearestFontWeight,
   templateToStyle,
   buildShadowFilter,
   buildWordStyle,
   applyTextTransform,
 } from '../lib/captionStyle';
-
-const CUSTOM_FONTS = [
-  { name: 'Montserrat (Viral Reels)', family: 'Montserrat' },
-  { name: 'Anton (Hormozi Punch)', family: 'Anton' },
-  { name: 'Rubik (Smooth Bold)', family: 'Rubik' },
-  { name: 'Plus Jakarta Sans (Modern)', family: 'Plus Jakarta Sans' },
-  { name: 'Outfit (Sleek Geometric)', family: 'Outfit' },
-  { name: 'Bebas Neue (Heavy Block)', family: 'Bebas Neue' },
-  { name: 'Syne (Edgy Creator)', family: 'Syne' },
-  { name: 'Oswald (Classic Title)', family: 'Oswald' },
-  { name: 'Inter (Minimal Clean)', family: 'Inter' },
-];
+import {
+  NEGATIVE_VARIANTS,
+  NEGATIVE_PRESETS,
+  NEGATIVE_FALLBACKS,
+  NEGATIVE_EASINGS,
+  NEGATIVE_DEFAULTS,
+  transitionToPreset,
+} from '../lib/negativeText';
 
 const QUICK_COLORS = [
   { name: 'Gold', hex: '#facc15' },
@@ -39,14 +40,28 @@ const QUICK_COLORS = [
 export default function StyleInspector({
   styleConfig,
   onUpdateStyle,
+  onUpdateStyleBatch,
   onApplyTemplate,
   onAutoHighlightAll,
   onAutoSplitLong,
   onUppercaseAll,
 }) {
-  const [activeTab, setActiveTab] = useState('Text'); // Text, VFX & Shadow, Templates, Transitions, AI Magic
+  const [activeTab, setActiveTab] = useState('Text'); // Text, VFX & Shadow, Negative, Templates, Transitions, AI Magic
   const [templateCategory, setTemplateCategory] = useState('all');
   const [magicNotice, setMagicNotice] = useState(null);
+
+  const isNegative = styleConfig.renderer === 'negative';
+  const updateMany = (updates) => {
+    if (onUpdateStyleBatch) onUpdateStyleBatch(updates);
+    else Object.entries(updates).forEach(([k, v]) => onUpdateStyle(k, v));
+  };
+  // The legacy transition picker keeps working on Negative Nano by mapping onto
+  // the equivalent mask-driven IN preset.
+  const setTransition = (id) => {
+    const preset = isNegative ? transitionToPreset(id) : null;
+    updateMany(preset ? { transition: id, inPreset: preset } : { transition: id });
+  };
+  const tabs = ['Text', 'VFX & Shadow', ...(isNegative ? ['Negative'] : []), 'Templates', 'Transitions', 'AI Magic'];
 
   const visibleTemplates =
     templateCategory === 'all'
@@ -63,7 +78,7 @@ export default function StyleInspector({
     <aside className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 overflow-hidden select-none">
       {/* Tab Navigation Bar */}
       <div className="flex border-b border-slate-800 bg-slate-950/60 overflow-x-auto">
-        {['Text', 'VFX & Shadow', 'Templates', 'Transitions', 'AI Magic'].map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -82,23 +97,8 @@ export default function StyleInspector({
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {activeTab === 'Text' && (
           <>
-            {/* Font Family Selector */}
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Font Family
-              </label>
-              <select
-                value={styleConfig.fontFamily}
-                onChange={(e) => onUpdateStyle('fontFamily', e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-slate-100 focus:outline-none focus:border-emerald-500 cursor-pointer"
-              >
-                {CUSTOM_FONTS.map((f) => (
-                  <option key={f.family} value={f.family}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Font picker: every family on disk, drawn in its own face, with the weights it really ships */}
+            <FontPicker styleConfig={styleConfig} onUpdateStyle={onUpdateStyle} updateMany={updateMany} />
 
             {/* Font Size Slider */}
             <div>
@@ -108,7 +108,7 @@ export default function StyleInspector({
                 </label>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => onUpdateStyle('fontSize', Math.max(14, (styleConfig.fontSize || 28) - 2))}
+                    onClick={() => onUpdateStyle('fontSize', Math.max(12, (styleConfig.fontSize || 28) - 2))}
                     className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs font-bold"
                   >
                     -
@@ -117,7 +117,7 @@ export default function StyleInspector({
                     {styleConfig.fontSize || 28} px
                   </span>
                   <button
-                    onClick={() => onUpdateStyle('fontSize', Math.min(64, (styleConfig.fontSize || 28) + 2))}
+                    onClick={() => onUpdateStyle('fontSize', Math.min(96, (styleConfig.fontSize || 28) + 2))}
                     className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs font-bold"
                   >
                     +
@@ -126,8 +126,8 @@ export default function StyleInspector({
               </div>
               <input
                 type="range"
-                min="14"
-                max="64"
+                min="12"
+                max="96"
                 value={styleConfig.fontSize || 28}
                 onChange={(e) => onUpdateStyle('fontSize', parseInt(e.target.value))}
                 className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
@@ -465,7 +465,7 @@ export default function StyleInspector({
                 ].map((tr) => (
                   <button
                     key={tr.id}
-                    onClick={() => onUpdateStyle('transition', tr.id)}
+                    onClick={() => setTransition(tr.id)}
                     className={`py-2 px-3 text-left text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
                       (styleConfig.transition || 'Fade In + Slide Up') === tr.id
                         ? 'bg-amber-500/20 text-amber-300 border-amber-500 shadow-sm'
@@ -481,6 +481,10 @@ export default function StyleInspector({
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'Negative' && isNegative && (
+          <NegativePanel styleConfig={styleConfig} onUpdateStyle={onUpdateStyle} updateMany={updateMany} />
         )}
 
         {activeTab === 'Templates' && (
@@ -532,7 +536,9 @@ export default function StyleInspector({
                   <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono mt-1.5 gap-2">
                     <span className="truncate">{tpl.fontFamily}</span>
                     <span className="shrink-0">
-                      {tpl.karaoke ? 'karaoke' : 'static'} &middot; {tpl.highlightMode}
+                      {tpl.renderer === 'negative'
+                        ? `negative · ${tpl.variant.replace('negative-', '')}`
+                        : `${tpl.karaoke ? 'karaoke' : 'static'} · ${tpl.highlightMode}`}
                     </span>
                   </div>
                 </div>
@@ -549,7 +555,7 @@ export default function StyleInspector({
             {['Pop Up', 'Zoom Kinetic', 'Fade In', 'Slide Up', 'None'].map((tr) => (
               <button
                 key={tr}
-                onClick={() => onUpdateStyle('transition', tr)}
+                onClick={() => setTransition(tr)}
                 className={`w-full p-3 rounded-xl text-left text-xs font-bold border transition-all cursor-pointer flex items-center justify-between ${
                   (styleConfig.transition || 'Pop Up') === tr
                     ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500 shadow-sm'
@@ -656,9 +662,12 @@ function TemplateThumbnail({ tpl }) {
         className="relative z-10 text-center px-1"
         style={{
           fontFamily: tpl.fontFamily,
+          fontWeight: nearestFontWeight(tpl.fontFamily, tpl.fontWeight),
+          fontStyle: tpl.italic ? 'italic' : 'normal',
+          fontSynthesisWeight: 'none',
           fontSize: '13px',
           lineHeight: tpl.lineHeight ?? 1.05,
-          mixBlendMode: tpl.mixBlendMode || 'normal',
+          mixBlendMode: tpl.renderer === 'negative' ? 'difference' : (tpl.mixBlendMode || 'normal'),
           transform: tpl.flipH ? 'scaleX(-1)' : 'none',
           backgroundColor: hasCard ? tpl.backgroundColor : 'transparent',
           borderRadius: hasCard ? `${Math.round((tpl.bgRadius ?? 0) * 0.6)}px` : 0,
@@ -666,7 +675,7 @@ function TemplateThumbnail({ tpl }) {
           filter: buildShadowFilter({ ...tpl, shadowBlur: (tpl.shadowBlur ?? 14) * 0.45, shadowDistance: (tpl.shadowDistance ?? 4) * 0.45 }),
         }}
       >
-        <div className="flex flex-wrap justify-center items-center gap-x-1 gap-y-0.5 font-black">
+        <div className="flex flex-wrap justify-center items-center gap-x-1 gap-y-0.5">
           {words.map((w, i) => (
             <span
               key={w}
@@ -683,6 +692,248 @@ function TemplateThumbnail({ tpl }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * Controls for the Negative Nano renderer. Font, size and position live in the
+ * Text tab; stroke / shadow / glow / pill in VFX & Shadow — all of them apply
+ * to this template too. This panel owns the negative-specific parameters.
+ */
+function NegativePanel({ styleConfig, onUpdateStyle, updateMany }) {
+  const v = (key) => styleConfig[key] ?? NEGATIVE_DEFAULTS[key];
+  const chip = (active, tone = 'emerald') =>
+    `py-2 px-2 text-left text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+      active ? CHIP_ACTIVE[tone] : 'bg-slate-800 text-slate-400 border-slate-700/60 hover:text-slate-200'
+    }`;
+
+  const slider = ({ label, k, min, max, step, unit, fmt }) => (
+    <div key={k}>
+      <div className="flex justify-between items-center mb-1 text-[11px] text-slate-400 font-mono">
+        <span>{label}</span>
+        <span className="text-emerald-400 font-bold">{fmt ? fmt(v(k)) : `${v(k)}${unit || ''}`}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={v(k)}
+        onChange={(e) => onUpdateStyle(k, parseFloat(e.target.value))}
+        className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+      />
+    </div>
+  );
+
+  const toggle = ({ label, k, hint }) => (
+    <label key={k} className="flex items-center justify-between bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/50 cursor-pointer">
+      <span>
+        <span className="text-xs text-slate-200 font-medium block">{label}</span>
+        {hint && <span className="text-[10px] text-slate-500 block">{hint}</span>}
+      </span>
+      <input
+        type="checkbox"
+        checked={!!v(k)}
+        onChange={(e) => onUpdateStyle(k, e.target.checked)}
+        className="accent-emerald-400 w-4 h-4 cursor-pointer"
+      />
+    </label>
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 text-[11px] text-slate-300 leading-snug">
+        Glyphs show the true per-pixel negative of the footage underneath — every frame, any font.
+        Font, size and position are in <b>Text</b>; stroke, shadow, glow and the pill box in <b>VFX &amp; Shadow</b>.
+      </div>
+
+      {/* Variant */}
+      <div className="space-y-2">
+        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Variant</label>
+        <div className="grid grid-cols-2 gap-2">
+          {NEGATIVE_VARIANTS.map((opt) => (
+            <button key={opt.id} onClick={() => onUpdateStyle('variant', opt.id)} className={chip(v('variant') === opt.id)} title={opt.hint}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-slate-500">{NEGATIVE_VARIANTS.find((o) => o.id === v('variant'))?.hint}</p>
+      </div>
+
+      {/* In / Out presets */}
+      {[
+        { k: 'inPreset', label: 'In Animation', tone: 'emerald' },
+        { k: 'outPreset', label: 'Out Animation', tone: 'amber' },
+      ].map(({ k, label, tone }) => (
+        <div key={k} className="space-y-2">
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">{label}</label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {NEGATIVE_PRESETS.map((p) => (
+              <button key={p.id} onClick={() => onUpdateStyle(k, p.id)} className={chip(v(k) === p.id, tone)} title={p.hint}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-slate-500">{NEGATIVE_PRESETS.find((p) => p.id === v(k))?.hint}</p>
+        </div>
+      ))}
+      {v('variant') === 'negative-sweep' && (
+        <p className="text-[10px] text-amber-300/90 -mt-3">Sweep variant: the band sweep is the IN animation; the IN preset is ignored.</p>
+      )}
+
+      {/* Timing */}
+      <div className="space-y-3 p-3.5 bg-slate-800/60 rounded-xl border border-slate-700/60">
+        <label className="text-xs font-bold text-emerald-400 uppercase tracking-wider">⏱ Timing (frame-accurate)</label>
+        {slider({ label: 'In duration', k: 'inDuration', min: 0, max: 1.5, step: 0.02, fmt: (x) => `${Number(x).toFixed(2)}s` })}
+        {slider({ label: 'Out duration', k: 'outDuration', min: 0, max: 1.5, step: 0.02, fmt: (x) => `${Number(x).toFixed(2)}s` })}
+        {slider({ label: 'Hold (0 = until caption ends)', k: 'holdDuration', min: 0, max: 5, step: 0.1, fmt: (x) => (x > 0 ? `${Number(x).toFixed(1)}s` : 'caption') })}
+        {slider({ label: 'Stagger per char / word', k: 'stagger', min: 0, max: 120, step: 5, unit: 'ms' })}
+        {slider({ label: 'Start offset', k: 'startTime', min: -0.5, max: 1, step: 0.02, fmt: (x) => `${Number(x) >= 0 ? '+' : ''}${Number(x).toFixed(2)}s` })}
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-slate-400 font-mono">Easing</span>
+          <select
+            value={v('easing')}
+            onChange={(e) => onUpdateStyle('easing', e.target.value)}
+            className="bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold rounded-lg px-2 py-1 focus:outline-none cursor-pointer"
+          >
+            {NEGATIVE_EASINGS.map((e) => (
+              <option key={e} value={e}>{e === 'auto' ? 'auto (per preset)' : e}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Readability */}
+      <div className="space-y-2 p-3.5 bg-slate-800/60 rounded-xl border border-slate-700/60">
+        <label className="text-xs font-bold text-cyan-400 uppercase tracking-wider">👁 Mid-gray safeguard</label>
+        <p className="text-[11px] text-slate-400">
+          Luminance under the text is sampled every few frames and smoothed. Around 50% gray the negative
+          looks like the original, so the chosen fallback ramps in.
+        </p>
+        <div className="grid grid-cols-3 gap-1.5">
+          {NEGATIVE_FALLBACKS.map((f) => (
+            <button key={f.id} onClick={() => onUpdateStyle('lowContrastFallback', f.id)} className={chip(v('lowContrastFallback') === f.id, 'cyan')} title={f.hint}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Typography */}
+      <div className="space-y-3 p-3.5 bg-slate-800/60 rounded-xl border border-slate-700/60">
+        <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Aa Typography</label>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => onUpdateStyle('textTransform', 'uppercase')} className={chip((styleConfig.textTransform || 'uppercase') === 'uppercase')}>UPPERCASE</button>
+          <button onClick={() => onUpdateStyle('textTransform', 'none')} className={chip(styleConfig.textTransform === 'none')}>As spoken</button>
+        </div>
+        {slider({ label: 'Letter spacing', k: 'letterSpacing', min: -2, max: 12, step: 0.5, unit: 'px' })}
+        {slider({ label: 'Max words per line', k: 'maxWordsPerLine', min: 1, max: 6, step: 1 })}
+        {slider({ label: 'Auto-fit width (safe area)', k: 'maxWidthPct', min: 50, max: 95, step: 1, unit: '%' })}
+        <button
+          onClick={() => updateMany({ xPercent: 50, yPercent: 72, position: 'custom', maxWidthPct: 85 })}
+          className="w-full py-1.5 text-xs font-bold rounded-lg border bg-slate-800 text-slate-300 border-slate-700/60 hover:text-emerald-300 cursor-pointer"
+        >
+          Reset to Shorts / Reels safe area
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {toggle({ label: 'Typewriter cursor', k: 'typewriterCursor', hint: 'Only for the Typewriter preset' })}
+        {toggle({ label: 'Opacity fade (opt-in)', k: 'opacityFade', hint: 'Also fades the mask — passes through flat gray at 50%' })}
+      </div>
+    </div>
+  );
+}
+
+// Tailwind needs the full class strings in source to generate them.
+const CHIP_ACTIVE = {
+  emerald: 'bg-emerald-500/20 text-emerald-300 border-emerald-500 shadow-sm',
+  amber: 'bg-amber-500/20 text-amber-300 border-amber-500 shadow-sm',
+  cyan: 'bg-cyan-500/20 text-cyan-300 border-cyan-500 shadow-sm',
+};
+
+
+/**
+ * Font picker. Families come from fontLibrary.json (generated from the font
+ * files), each drawn in its own face; the weight row only offers weights the
+ * family really ships, so the export always finds the identical file.
+ */
+function FontPicker({ styleConfig, onUpdateStyle, updateMany }) {
+  const current = fontInfo(styleConfig.fontFamily);
+  const [category, setCategory] = useState(current?.category || FONT_CATEGORIES[0]?.id);
+  const visible = FONT_LIBRARY.filter((f) => f.category === category);
+  const weight = nearestFontWeight(styleConfig.fontFamily, styleConfig.fontWeight);
+  const chip = (active, tone = 'emerald') =>
+    `px-2 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
+      active ? CHIP_ACTIVE[tone] : 'bg-slate-800 text-slate-400 border-slate-700/60 hover:text-slate-200'
+    }`;
+
+  const pick = (f) => {
+    updateMany({ fontFamily: f.family, fontWeight: nearestFontWeight(f.family, styleConfig.fontWeight || f.defaultWeight) });
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Font</label>
+        <span className="text-[10px] font-mono text-emerald-400 truncate max-w-[55%]" title={styleConfig.fontFamily}>
+          {styleConfig.fontFamily} · {WEIGHT_LABELS[weight] || weight}{styleConfig.italic ? ' Italic' : ''}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {FONT_CATEGORIES.map((c) => (
+          <button key={c.id} onClick={() => setCategory(c.id)} className={chip(category === c.id, 'cyan')}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-1.5 max-h-60 overflow-y-auto pr-1">
+        {visible.map((f) => {
+          const active = f.family === styleConfig.fontFamily;
+          return (
+            <button
+              key={f.family}
+              onClick={() => pick(f)}
+              className={`text-left px-2.5 py-2 rounded-lg border transition-all cursor-pointer ${
+                active
+                  ? 'bg-emerald-500/15 border-emerald-500 text-emerald-100'
+                  : 'bg-slate-800/70 border-slate-700/60 text-slate-100 hover:border-emerald-500/60'
+              }`}
+              title={`${f.family} — ${f.weights.map((w) => WEIGHT_LABELS[w] || w).join(', ')}${f.italics.length ? ' · italic' : ''}`}
+            >
+              <span
+                className="block text-[15px] leading-tight truncate"
+                style={{ fontFamily: `"${f.family}"`, fontWeight: f.defaultWeight, fontSynthesisWeight: 'none' }}
+              >
+                {f.family}
+              </span>
+              <span className="block text-[9px] font-semibold text-slate-500 truncate">{f.tagline || `${f.weights.length} weight${f.weights.length === 1 ? '' : 's'}`}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {current && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-slate-500 font-mono mr-1">Weight</span>
+          {current.weights.map((w) => (
+            <button key={w} onClick={() => onUpdateStyle('fontWeight', w)} className={chip(weight === w)}>
+              {WEIGHT_LABELS[w] || w}
+            </button>
+          ))}
+          <button
+            onClick={() => onUpdateStyle('italic', !styleConfig.italic)}
+            className={chip(!!styleConfig.italic, 'amber')}
+            title={current.italics.length ? 'True italic face' : 'This family has no italic face — an oblique is synthesised (identically in the export)'}
+          >
+            Italic{current.italics.length ? '' : ' ~'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
