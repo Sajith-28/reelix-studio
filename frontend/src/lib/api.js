@@ -1,17 +1,23 @@
+export const cleanUrl = (url) => {
+  if (!url) return '';
+  return url.trim().replace(/[)\]};:,'"\s]+$/, '').replace(/\/$/, '');
+};
+
 export const getApiBase = () => {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem('reelix_custom_api_url');
     if (custom && custom.trim()) {
-      return custom.trim().replace(/\/$/, '');
+      return cleanUrl(custom);
     }
   }
-  return (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+  return cleanUrl(import.meta.env.VITE_API_URL || '');
 };
 
 export const setApiBase = (url) => {
   if (typeof window !== 'undefined') {
-    if (url && url.trim()) {
-      localStorage.setItem('reelix_custom_api_url', url.trim().replace(/\/$/, ''));
+    const cleaned = cleanUrl(url);
+    if (cleaned) {
+      localStorage.setItem('reelix_custom_api_url', cleaned);
     } else {
       localStorage.removeItem('reelix_custom_api_url');
     }
@@ -45,7 +51,8 @@ export const resolveMediaUrl = (url) => {
 
 export const checkBackendHealth = async (overrideBase = null) => {
   try {
-    const base = overrideBase !== null ? (overrideBase || '').replace(/\/$/, '') : getApiBase();
+    const raw = overrideBase !== null ? overrideBase : getApiBase();
+    const base = cleanUrl(raw);
     const url = `${base}/`;
     const res = await fetch(url, {
       method: 'GET',

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getApiBase, setApiBase, checkBackendHealth } from '../lib/api';
+import { getApiBase, setApiBase, checkBackendHealth, cleanUrl } from '../lib/api';
 
 export default function BackendSettingsModal({ isOpen, onClose, onSave }) {
   const [url, setUrl] = useState('');
@@ -18,15 +18,18 @@ export default function BackendSettingsModal({ isOpen, onClose, onSave }) {
   const handleTest = async (testUrl) => {
     setTesting(true);
     setTestResult(null);
-    const target = typeof testUrl === 'string' ? testUrl : url;
+    const rawTarget = typeof testUrl === 'string' ? testUrl : url;
+    const target = cleanUrl(rawTarget);
+    setUrl(target); // clean what's visible in the input box!
     const res = await checkBackendHealth(target);
     setTesting(false);
     setTestResult(res);
   };
 
   const handleSave = () => {
-    setApiBase(url);
-    if (onSave) onSave(url);
+    const cleaned = cleanUrl(url);
+    setApiBase(cleaned);
+    if (onSave) onSave(cleaned);
     onClose();
   };
 
