@@ -312,11 +312,25 @@ export default function App() {
   };
 
   // Update Caption Text
+  // When text is edited we must clear the word-level timestamps (words[]) that
+  // Whisper produced — they are keyed to the original words and will be stale
+  // after any edit. Clearing them forces both the DOM overlay and the
+  // NegativeTextCanvas to re-split the new translated_text directly.
   const handleUpdateCaptionText = (id, newText) => {
     if (!project) return;
-    const updatedCaptions = project.captions.map((c) =>
-      c.id === id ? { ...c, translated_text: newText } : c
-    );
+    const updatedCaptions = project.captions.map((c) => {
+      if (c.id !== id) return c;
+      // Check if the word count changed — if so, discard stale word timestamps
+      const newWords = newText.trim().split(/\s+/).filter(Boolean);
+      const oldWords = (c.words || []);
+      const wordsStale = oldWords.length !== newWords.length;
+      return {
+        ...c,
+        translated_text: newText,
+        // Clear stale Whisper word timestamps when the text changes
+        words: wordsStale ? [] : oldWords,
+      };
+    });
     setProject({ ...project, captions: updatedCaptions });
     pushHistory(updatedCaptions);
   };

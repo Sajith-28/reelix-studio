@@ -282,18 +282,30 @@ export default function VideoPreview({
     }
   }, [isDragging, isResizing, onUpdateStyle, onUpdateStyleBatch, styleConfig.fontSize]);
 
-  // Extract active word in current caption if word timestamps are present
-  const wordsList =
-    Array.isArray(currentCaption?.words) && currentCaption.words.length > 0
-      ? currentCaption.words
-      : (currentCaption?.translated_text || '')
-          .split(/\s+/)
-          .filter(Boolean)
-          .map((w) => ({
-            word: w,
-            start: currentCaption?.start || 0,
-            end: currentCaption?.end || 0,
-          }));
+  // Extract active word list for the current caption.
+  // IMPORTANT: When the user edits translated_text in the CaptionsPanel, the
+  // words[] array (Whisper word-level timestamps) becomes stale. We detect
+  // this mismatch by comparing word counts and always fall back to splitting
+  // translated_text so the preview reflects edits immediately.
+  const wordsList = (() => {
+    const text = currentCaption?.translated_text || '';
+    const textWords = text.split(/\s+/).filter(Boolean);
+    const hasValidWords =
+      Array.isArray(currentCaption?.words) &&
+      currentCaption.words.length > 0 &&
+      currentCaption.words.length === textWords.length;
+
+    if (hasValidWords) {
+      // Words array is in sync with current text — use it for per-word highlight
+      return currentCaption.words;
+    }
+    // Text was edited or no word timestamps — split translated_text directly
+    return textWords.map((w) => ({
+      word: w,
+      start: currentCaption?.start || 0,
+      end: currentCaption?.end || 0,
+    }));
+  })();
 
   return (
     <main className="flex-1 bg-slate-950 flex flex-col justify-between items-center relative overflow-hidden select-none">
