@@ -31,13 +31,14 @@ from services.translation import translate_captions
 
 app = FastAPI(title="REELIX API", version="2.0.0")
 
-# CORS setup
+# CORS setup — allow any origin for cross-device access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
