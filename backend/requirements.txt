@@ -7,4 +7,5 @@ httpx
 Pillow
 numpy
 opencv-python-headless
+certifi
 pytest

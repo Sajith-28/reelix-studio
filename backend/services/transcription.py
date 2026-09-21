@@ -96,20 +96,8 @@ def transcribe_video_audio(wav_path: str, spoken_language: str = None, target_la
       directly into 100% accurate, word-for-word English from the acoustic features.
     - Slices raw segments into snappy 2-4 word Reels cards with character-weighted sub-second word timestamps.
     """
-    for env_path in [
-        os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
-        os.path.join(os.path.dirname(__file__), "..", ".env"),
-        os.path.abspath(".env"),
-    ]:
-        if os.path.exists(env_path):
-            load_dotenv(env_path, override=True)
-            break
-
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY is missing from environment or .env file.")
-
-    client = Groq(api_key=api_key, timeout=60.0)
+    from services.groq_client import get_groq_client
+    client = get_groq_client(timeout=120.0)
 
     target_lang_clean = (target_language or "English").strip().lower()
     spoken_lang_clean = (spoken_language or "Auto Detect").strip().lower()

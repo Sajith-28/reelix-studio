@@ -68,6 +68,44 @@ def health():
     return {"status": "ok", "service": "REELIX Studio API", "version": "2.0.0"}
 
 
+from services.groq_client import get_groq_api_key, get_groq_client
+
+
+@app.get("/api/diag")
+def diagnostics():
+    import socket
+    key = get_groq_api_key()
+    dns_ok = False
+    dns_err = None
+    try:
+        socket.getaddrinfo("api.groq.com", 443)
+        dns_ok = True
+    except Exception as exc:
+        dns_err = str(exc)
+
+    groq_ok = False
+    groq_err = None
+    if key and dns_ok:
+        try:
+            client = get_groq_client(timeout=15.0)
+            client.models.list()
+            groq_ok = True
+        except Exception as exc:
+            cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+            groq_err = f"{type(exc).__name__}: {str(exc)} (cause: {cause})"
+
+    return {
+        "status": "online",
+        "has_groq_key": bool(key),
+        "groq_key_prefix": key[:7] + "..." if len(key) > 7 else "unset",
+        "groq_key_len": len(key),
+        "dns_groq_ok": dns_ok,
+        "dns_error": dns_err,
+        "groq_api_ok": groq_ok,
+        "groq_api_error": groq_err,
+    }
+
+
 @app.post("/api/process-video")
 async def process_video(
     file: UploadFile = File(...),
@@ -78,17 +116,12 @@ async def process_video(
     Processes video upload: extracts audio, transcribes with Whisper, translates with Llama,
     and returns structured caption timeline data.
     """
-    for env_path in [
-        os.path.join(os.path.dirname(__file__), "..", ".env"),
-        os.path.join(os.path.dirname(__file__), ".env"),
-        os.path.abspath(".env"),
-    ]:
-        if os.path.exists(env_path):
-            load_dotenv(env_path, override=True)
-            break
-
-    if not os.getenv("GROQ_API_KEY"):
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY is not configured in your .env file.")
+    api_key = get_groq_api_key()
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="GROQ_API_KEY is not configured in your environment or .env file."
+        )
 
     job_id = str(uuid.uuid4())[:8]
     ext = os.path.splitext(file.filename)[1] or ".mp4"
@@ -134,7 +167,9 @@ async def process_video(
         raise
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to process video: {str(e)}")
+        cause = getattr(e, "__cause__", None) or getattr(e, "__context__", None)
+        detail = f"{str(e)} ({cause})" if cause else str(e)
+        raise HTTPException(status_code=500, detail=f"Failed to process video: {detail}")
 
 
 class ExportSrtRequest(BaseModel):

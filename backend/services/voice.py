@@ -14,20 +14,8 @@ def transcribe_audio(file_bytes: bytes, filename: str = "audio.wav") -> str:
     Transcribes audio bytes using Groq Whisper Large-V3.
     Returns transcribed text string.
     """
-    for env_path in [
-        os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
-        os.path.join(os.path.dirname(__file__), "..", ".env"),
-        os.path.abspath(".env"),
-    ]:
-        if os.path.exists(env_path):
-            load_dotenv(env_path, override=True)
-            break
-
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY is missing from environment or .env file.")
-
-    client = Groq(api_key=api_key)
+    from services.groq_client import get_groq_client
+    client = get_groq_client(timeout=60.0)
 
     # Create temporary file for Groq API audio input
     ext = os.path.splitext(filename)[1] or ".wav"

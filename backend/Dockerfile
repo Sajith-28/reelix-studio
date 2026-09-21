@@ -1,7 +1,8 @@
 FROM python:3.11-slim
 
-# Install system dependencies: FFmpeg, OpenGL, and font libraries
+# Install system dependencies: FFmpeg, OpenGL, CA certificates, and font libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     ffmpeg \
     libsm6 \
     libxext6 \
