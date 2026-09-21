@@ -69,6 +69,7 @@ export default function VideoPreview({
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0, aspect: '' });
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [isStretching, setIsStretching] = useState(false);
   const [isSelected, setIsSelected] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
   const [snapGuides, setSnapGuides] = useState({ x: null, y: null });
@@ -78,6 +79,7 @@ export default function VideoPreview({
   });
   const dragRef = useRef(null);
   const resizeRef = useRef(null);
+  const stretchRef = useRef(null);
   const captionRef = useRef(null);
 
   const dismissTip = () => {
@@ -210,6 +212,19 @@ export default function VideoPreview({
     };
   };
 
+  const handleMouseDownStretch = (e, side) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsStretching(true);
+    setIsSelected(true);
+    stretchRef.current = {
+      side,
+      startX: e.clientX,
+      initialWords: Math.max(1, Number(styleConfig.maxWordsPerLine) || 3),
+      hasMoved: false,
+    };
+  };
+
   // Ctrl / ⌘ + scroll over the caption zooms the text (native listener: React's
   // wheel handler is passive, so the browser would also zoom the page).
   useEffect(() => {
@@ -225,7 +240,7 @@ export default function VideoPreview({
     return () => el.removeEventListener('wheel', onWheel);
   }, [currentCaption, styleConfig.fontSize, onUpdateStyle]);
 
-  // Window mouse move listener for smooth drag & resize
+  // Window mouse move listener for smooth drag, resize & side-stretching
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (isDragging && dragRef.current) {
@@ -261,6 +276,20 @@ export default function VideoPreview({
         if (newSize !== (styleConfig.fontSize || 28) && onUpdateStyle) {
           onUpdateStyle('fontSize', newSize);
         }
+      } else if (isStretching && stretchRef.current) {
+        const { side, startX, initialWords } = stretchRef.current;
+        const deltaX = e.clientX - startX;
+        if (Math.abs(deltaX) > 4) {
+          stretchRef.current.hasMoved = true;
+        }
+        // Outward drag = wider / more words per line
+        // Inward drag = narrower / fewer words per line (forcing wrapping to new lines)
+        const directionalDelta = side === 'right' ? deltaX : -deltaX;
+        const step = Math.round(directionalDelta / 40);
+        const newWords = Math.max(1, Math.min(10, initialWords + step));
+        if (newWords !== (styleConfig.maxWordsPerLine ?? 3) && onUpdateStyle) {
+          onUpdateStyle('maxWordsPerLine', newWords);
+        }
       }
     };
 
@@ -270,9 +299,21 @@ export default function VideoPreview({
         setSnapGuides({ x: null, y: null });
       }
       if (isResizing) setIsResizing(false);
+      if (isStretching) {
+        // Quick click on side arrow without significant drag triggers text alignment toggle
+        if (stretchRef.current && !stretchRef.current.hasMoved) {
+          const side = stretchRef.current.side;
+          if (side === 'left') {
+            onUpdateStyle?.('textAlign', 'left');
+          } else if (side === 'right') {
+            onUpdateStyle?.('textAlign', 'right');
+          }
+        }
+        setIsStretching(false);
+      }
     };
 
-    if (isDragging || isResizing) {
+    if (isDragging || isResizing || isStretching) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
       return () => {
@@ -280,7 +321,7 @@ export default function VideoPreview({
         window.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, onUpdateStyle, onUpdateStyleBatch, styleConfig.fontSize]);
+  }, [isDragging, isResizing, isStretching, onUpdateStyle, onUpdateStyleBatch, styleConfig.fontSize, styleConfig.maxWordsPerLine]);
 
   // Extract active word list for the current caption.
   // IMPORTANT: When the user edits translated_text in the CaptionsPanel, the
@@ -383,7 +424,7 @@ export default function VideoPreview({
                   e.stopPropagation();
                   setIsSelected(true);
                 }}
-                className={`absolute text-center transition-shadow duration-100 z-30 group/caption cursor-grab active:cursor-grabbing select-none ${
+                className={`absolute transition-shadow duration-100 z-30 group/caption cursor-grab active:cursor-grabbing select-none ${
                   isSelected || isDragging || isResizing
                     ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-black/80 shadow-[0_0_20px_rgba(16,185,129,0.4)]'
                     : 'hover:ring-1 hover:ring-emerald-400/50'
@@ -394,6 +435,7 @@ export default function VideoPreview({
                   transform: `translate(-50%, calc(-50% + ${slideY * k}px)) scale(${scale * k}) ${styleConfig.flipH ? 'scaleX(-1)' : ''}`,
                   opacity: opacity,
                   maxWidth: 'none',
+                  textAlign: styleConfig.textAlign || 'center',
                   fontFamily: styleConfig.fontFamily || 'Montserrat',
                   fontWeight: nearestFontWeight(styleConfig.fontFamily, styleConfig.fontWeight),
                   fontSize: `${fittedSize}px`,
@@ -412,122 +454,191 @@ export default function VideoPreview({
                 }}
                 title="Click and drag to move subtitle anywhere on video!"
               >
-              {/* Floating Quick Action Bar (Visible when selected or dragging) */}
+              {/* ── Floating Control Panel (hover / selected) ───────────────── */}
               <div
                 onClick={(e) => e.stopPropagation()}
-                className={`absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 rounded-xl px-2 py-1 flex items-center gap-1.5 shadow-2xl text-[11px] font-sans font-bold z-40 transition-opacity whitespace-nowrap pointer-events-auto ${
+                className={`absolute left-1/2 -translate-x-1/2 flex flex-col gap-1 z-40 transition-opacity pointer-events-auto ${
                   isSelected || isDragging || isResizing ? 'opacity-100' : 'opacity-0 group-hover/caption:opacity-100'
                 }`}
-                style={{ transform: `scale(${1 / k})`, transformOrigin: 'bottom center' }}
+                style={{
+                  bottom: '100%',
+                  marginBottom: `${6 / k}px`,
+                  transform: `translateX(-50%) scale(${1 / k})`,
+                  transformOrigin: 'bottom center',
+                }}
               >
-                <span className="text-emerald-400 font-mono text-[10px] pr-1 border-r border-slate-700">
-                  {xPercent}% , {yPercent}% &middot; {styleConfig.fontSize || 28}px
-                </span>
+                {/* ── Row 1: position info | grid | zoom | position presets ── */}
+                <div className="flex items-center gap-1 bg-slate-900/95 border border-slate-700/80 rounded-xl px-2 py-1 shadow-2xl text-[11px] font-sans font-bold whitespace-nowrap">
+                  <span className="text-emerald-400 font-mono text-[10px] pr-1 border-r border-slate-700">
+                    {xPercent}%,{yPercent}% · {styleConfig.fontSize || 28}px
+                  </span>
 
-                {/* Grid / guides toggle */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowGrid((v) => !v);
-                  }}
-                  title="Show alignment grid & safe area (auto while dragging; hold Shift to drag without snapping)"
-                  className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer border ${
-                    showGrid ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/60' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-transparent'
-                  }`}
-                >
-                  ⊞ Grid
-                </button>
+                  {/* Grid toggle */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowGrid((v) => !v); }}
+                    title="Show alignment grid & safe area"
+                    className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer border ${
+                      showGrid ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/60' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-transparent'
+                    }`}
+                  >
+                    ⊞
+                  </button>
 
-                {/* Size - / + */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onUpdateStyle?.('fontSize', clampSize((styleConfig.fontSize || 28) - 2));
-                  }}
-                  title="Decrease text size (A-)"
-                  className="w-5 h-5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded flex items-center justify-center cursor-pointer"
-                >
-                  A-
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onUpdateStyle?.('fontSize', clampSize((styleConfig.fontSize || 28) + 2));
-                  }}
-                  title="Increase text size (A+)"
-                  className="w-5 h-5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded flex items-center justify-center cursor-pointer"
-                >
-                  A+
-                </button>
+                  {/* Zoom A- / A+ */}
+                  <div className="flex items-center gap-0.5 border-l border-slate-700 pl-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onUpdateStyle?.('fontSize', clampSize((styleConfig.fontSize || 28) - 2)); }}
+                      title="Shrink text (Ctrl+Scroll down)"
+                      className="w-6 h-5 bg-slate-800 hover:bg-emerald-500/20 hover:text-emerald-300 text-slate-300 rounded flex items-center justify-center text-[10px] cursor-pointer transition-colors"
+                    >A−</button>
+                    <span className="text-[10px] text-slate-400 font-mono px-0.5">{styleConfig.fontSize || 28}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onUpdateStyle?.('fontSize', clampSize((styleConfig.fontSize || 28) + 2)); }}
+                      title="Grow text (Ctrl+Scroll up)"
+                      className="w-6 h-5 bg-slate-800 hover:bg-emerald-500/20 hover:text-emerald-300 text-slate-300 rounded flex items-center justify-center text-[10px] cursor-pointer transition-colors"
+                    >A+</button>
+                  </div>
 
-                {/* Quick Presets */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onUpdateStyleBatch?.({ xPercent: 50, yPercent: 15, position: 'top' });
-                  }}
-                  title="Move to Top (15%)"
-                  className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] cursor-pointer"
-                >
-                  ⬆ Top
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onUpdateStyleBatch?.({ xPercent: 50, yPercent: 50, position: 'center' });
-                  }}
-                  title="Move to Center (50%)"
-                  className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] cursor-pointer"
-                >
-                  🎯 Center
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onUpdateStyleBatch?.({ xPercent: 50, yPercent: 82, position: 'bottom' });
-                  }}
-                  title="Move to Reels Safe Zone (82%)"
-                  className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded text-[10px] cursor-pointer font-bold"
-                >
-                  ⬇ Safe Zone
-                </button>
+                  {/* Position presets */}
+                  <div className="flex items-center gap-0.5 border-l border-slate-700 pl-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onUpdateStyleBatch?.({ xPercent: 50, yPercent: 15, position: 'top' }); }}
+                      title="Top (15%)"
+                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] cursor-pointer"
+                    >⬆</button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onUpdateStyleBatch?.({ xPercent: 50, yPercent: 50, position: 'center' }); }}
+                      title="Center (50%)"
+                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] cursor-pointer"
+                    >🎯</button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onUpdateStyleBatch?.({ xPercent: 50, yPercent: 82, position: 'bottom' }); }}
+                      title="Reels Safe Zone (82%)"
+                      className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded text-[10px] cursor-pointer"
+                    >⬇</button>
+                  </div>
+                </div>
+
+                {/* ── Row 2: alignment | words/line | line-height ── */}
+                <div className="flex items-center gap-1 bg-slate-950/95 border border-slate-700/60 rounded-xl px-2 py-1 shadow-xl text-[11px] font-sans font-bold whitespace-nowrap">
+
+                  {/* Text Alignment */}
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[9px] text-slate-500 uppercase tracking-wider mr-0.5">Align</span>
+                    {[['left','←'],['center','⎯'],['right','→']].map(([align, icon]) => (
+                      <button
+                        key={align}
+                        onClick={(e) => { e.stopPropagation(); onUpdateStyle?.('textAlign', align); }}
+                        title={`Align ${align}`}
+                        className={`w-6 h-5 rounded flex items-center justify-center text-[11px] cursor-pointer transition-colors border ${
+                          (styleConfig.textAlign || 'center') === align
+                            ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/60'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-transparent'
+                        }`}
+                      >{icon}</button>
+                    ))}
+                  </div>
+
+                  <div className="w-px h-4 bg-slate-700" />
+
+                  {/* Words per line — controls line-break width */}
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[9px] text-slate-500 uppercase tracking-wider mr-0.5">Width</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onUpdateStyle?.('maxWordsPerLine', Math.max(1, (styleConfig.maxWordsPerLine ?? 3) - 1)); }}
+                      title="Fewer words per line (narrower)"
+                      className="w-6 h-5 bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 text-slate-300 rounded flex items-center justify-center text-[12px] cursor-pointer transition-colors border border-transparent hover:border-amber-500/40"
+                    >←</button>
+                    <span className="text-[10px] text-amber-400 font-mono min-w-[14px] text-center">{styleConfig.maxWordsPerLine ?? 3}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onUpdateStyle?.('maxWordsPerLine', Math.min(10, (styleConfig.maxWordsPerLine ?? 3) + 1)); }}
+                      title="More words per line (wider)"
+                      className="w-6 h-5 bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 text-slate-300 rounded flex items-center justify-center text-[12px] cursor-pointer transition-colors border border-transparent hover:border-amber-500/40"
+                    >→</button>
+                  </div>
+
+                  <div className="w-px h-4 bg-slate-700" />
+
+                  {/* Line Height */}
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[9px] text-slate-500 uppercase tracking-wider mr-0.5">↕</span>
+                    {[[1.0,'Tight'],[1.05,'Normal'],[1.3,'Loose'],[1.6,'Airy']].map(([lh, label]) => (
+                      <button
+                        key={lh}
+                        onClick={(e) => { e.stopPropagation(); onUpdateStyle?.('lineHeight', lh); }}
+                        title={`Line height: ${label}`}
+                        className={`px-1.5 py-0.5 rounded text-[9px] cursor-pointer transition-colors border ${
+                          Math.abs((styleConfig.lineHeight ?? 1.05) - lh) < 0.04
+                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-transparent'
+                        }`}
+                      >{label}</button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* Interaction hint — counter-scaled like the action bar */}
-              {(isSelected || isResizing) && !isDragging && (
+              {(isSelected || isResizing || isStretching) && !isDragging && (
                 <div
                   className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold text-slate-300 bg-slate-950/80 border border-slate-700/60 px-2 py-0.5 rounded-md pointer-events-none"
                   style={{ transform: `scale(${1 / k})`, transformOrigin: 'top center' }}
                 >
-                  Drag to move · pull a corner or Ctrl+scroll to resize · Shift = no snap
+                  Drag to move · Corner handles to zoom · Side arrows to stretch & align · Ctrl+scroll to size
                 </div>
               )}
 
-              {/* 4 Corner Resize Anchor Handles */}
-              {(isSelected || isDragging || isResizing) && (
-                <>
-                  <div
-                    onMouseDown={handleMouseDownResize}
-                    className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-emerald-400 border border-slate-950 rounded-full cursor-nwse-resize shadow-md"
-                    title="Drag to resize text size"
-                  />
-                  <div
-                    onMouseDown={handleMouseDownResize}
-                    className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-400 border border-slate-950 rounded-full cursor-nesw-resize shadow-md"
-                    title="Drag to resize text size"
-                  />
-                  <div
-                    onMouseDown={handleMouseDownResize}
-                    className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-emerald-400 border border-slate-950 rounded-full cursor-nesw-resize shadow-md"
-                    title="Drag to resize text size"
-                  />
-                  <div
-                    onMouseDown={handleMouseDownResize}
-                    className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-emerald-400 border border-slate-950 rounded-full cursor-nwse-resize shadow-md"
-                    title="Drag to resize text size"
-                  />
-                </>
-              )}
+              {/* 4 Corner Resize / Zoom Handles (visible on hover or active) */}
+              <div
+                onMouseDown={handleMouseDownResize}
+                className={`absolute -top-2 -left-2 w-4 h-4 bg-emerald-400 border-2 border-slate-950 rounded-full cursor-nwse-resize shadow-md transition-all hover:scale-125 hover:bg-emerald-300 z-40 ${
+                  isSelected || isDragging || isResizing || isStretching ? 'opacity-100' : 'opacity-0 group-hover/caption:opacity-100'
+                }`}
+                title="Zoom: Drag corner to scale text size (or Ctrl+Scroll)"
+              />
+              <div
+                onMouseDown={handleMouseDownResize}
+                className={`absolute -top-2 -right-2 w-4 h-4 bg-emerald-400 border-2 border-slate-950 rounded-full cursor-nesw-resize shadow-md transition-all hover:scale-125 hover:bg-emerald-300 z-40 ${
+                  isSelected || isDragging || isResizing || isStretching ? 'opacity-100' : 'opacity-0 group-hover/caption:opacity-100'
+                }`}
+                title="Zoom: Drag corner to scale text size (or Ctrl+Scroll)"
+              />
+              <div
+                onMouseDown={handleMouseDownResize}
+                className={`absolute -bottom-2 -left-2 w-4 h-4 bg-emerald-400 border-2 border-slate-950 rounded-full cursor-nesw-resize shadow-md transition-all hover:scale-125 hover:bg-emerald-300 z-40 ${
+                  isSelected || isDragging || isResizing || isStretching ? 'opacity-100' : 'opacity-0 group-hover/caption:opacity-100'
+                }`}
+                title="Zoom: Drag corner to scale text size (or Ctrl+Scroll)"
+              />
+              <div
+                onMouseDown={handleMouseDownResize}
+                className={`absolute -bottom-2 -right-2 w-4 h-4 bg-emerald-400 border-2 border-slate-950 rounded-full cursor-nwse-resize shadow-md transition-all hover:scale-125 hover:bg-emerald-300 z-40 ${
+                  isSelected || isDragging || isResizing || isStretching ? 'opacity-100' : 'opacity-0 group-hover/caption:opacity-100'
+                }`}
+                title="Zoom: Drag corner to scale text size (or Ctrl+Scroll)"
+              />
+
+              {/* Left Side Arrow: Stretch for Newlines & Align Left */}
+              <div
+                onMouseDown={(e) => handleMouseDownStretch(e, 'left')}
+                className={`absolute -left-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-slate-900/95 border-2 border-amber-400 text-amber-300 flex items-center justify-center text-[10px] font-bold shadow-xl cursor-ew-resize select-none transition-all hover:scale-125 hover:bg-amber-400 hover:text-slate-950 active:scale-95 z-40 ${
+                  isSelected || isDragging || isResizing || isStretching ? 'opacity-100' : 'opacity-0 group-hover/caption:opacity-100'
+                }`}
+                title="Side arrow: Drag left/right to stretch width & change newline wrapping. Click to align left."
+              >
+                ◀
+              </div>
+
+              {/* Right Side Arrow: Stretch for Newlines & Align Right */}
+              <div
+                onMouseDown={(e) => handleMouseDownStretch(e, 'right')}
+                className={`absolute -right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-slate-900/95 border-2 border-amber-400 text-amber-300 flex items-center justify-center text-[10px] font-bold shadow-xl cursor-ew-resize select-none transition-all hover:scale-125 hover:bg-amber-400 hover:text-slate-950 active:scale-95 z-40 ${
+                  isSelected || isDragging || isResizing || isStretching ? 'opacity-100' : 'opacity-0 group-hover/caption:opacity-100'
+                }`}
+                title="Side arrow: Drag left/right to stretch width & change newline wrapping. Click to align right."
+              >
+                ▶
+              </div>
 
               {/* Subtitle Words Content */}
               {(() => {
@@ -543,10 +654,16 @@ export default function VideoPreview({
                       visibility: effectiveNegative ? 'hidden' : 'visible',
                     }}
                   >
-                    {lines.map((line, lineIdx) => (
+                    {lines.map((line, lineIdx) => {
+                      const justify =
+                        styleConfig.textAlign === 'left' ? 'flex-start'
+                        : styleConfig.textAlign === 'right' ? 'flex-end'
+                        : 'center';
+                      return (
                       <div
                         key={lineIdx}
-                        className="flex flex-nowrap justify-center items-center gap-x-[0.26em] gap-y-[0.08em] whitespace-nowrap"
+                        className="flex flex-nowrap items-center gap-x-[0.26em] gap-y-[0.08em] whitespace-nowrap"
+                        style={{ justifyContent: justify }}
                       >
                         {line.map((wObj, i) => {
                           const rawWord = (typeof wObj === 'string' ? wObj : wObj?.word) || '';
@@ -576,7 +693,8 @@ export default function VideoPreview({
                           );
                         })}
                       </div>
-                    ))}
+                    ); })}
+
                   </div>
                 );
               })()}

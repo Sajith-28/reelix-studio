@@ -134,6 +134,73 @@ export default function StyleInspector({
               />
             </div>
 
+            {/* Alignment & Words Per Line (Width / Newline Wrapping) */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Text Alignment */}
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Alignment
+                </label>
+                <div className="flex rounded-lg bg-slate-800 p-0.5 border border-slate-700/60">
+                  {[
+                    { id: 'left', label: 'Left', icon: '←' },
+                    { id: 'center', label: 'Center', icon: '⎯' },
+                    { id: 'right', label: 'Right', icon: '→' },
+                  ].map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => onUpdateStyle('textAlign', a.id)}
+                      className={`flex-1 py-1 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        (styleConfig.textAlign || 'center') === a.id
+                          ? 'bg-emerald-500/20 text-emerald-400 shadow'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title={`Align ${a.label}`}
+                    >
+                      <span>{a.icon}</span>
+                      <span className="text-[10px]">{a.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Words Per Line / Line break width */}
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Words / Line
+                  </label>
+                  <span className="text-xs font-mono text-amber-400 font-bold">
+                    {styleConfig.maxWordsPerLine ?? 3}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => onUpdateStyle('maxWordsPerLine', Math.max(1, (styleConfig.maxWordsPerLine ?? 3) - 1))}
+                    className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs font-bold border border-slate-700/60 cursor-pointer"
+                    title="Narrower / fewer words per line (wrap to newline)"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="range"
+                    min="1"
+                    max="8"
+                    value={styleConfig.maxWordsPerLine ?? 3}
+                    onChange={(e) => onUpdateStyle('maxWordsPerLine', parseInt(e.target.value))}
+                    className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  />
+                  <button
+                    onClick={() => onUpdateStyle('maxWordsPerLine', Math.min(8, (styleConfig.maxWordsPerLine ?? 3) + 1))}
+                    className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs font-bold border border-slate-700/60 cursor-pointer"
+                    title="Wider / more words per line"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* Position Controls & Presets */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">

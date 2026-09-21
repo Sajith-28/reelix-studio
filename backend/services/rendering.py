@@ -371,7 +371,13 @@ def _build_caption_layer(words, active_idx, keywords, style, font, scale, max_wi
     for li, row in enumerate(marks):
         baseline = pad + li * line_step + half_leading + ascent
         centre_y = pad + (li + 0.5) * line_step
-        x = pad + (block_w - measured[li]["total"]) / 2.0
+        align = style.get("textAlign", "center")
+        if align == "left":
+            x = pad
+        elif align == "right":
+            x = pad + (block_w - measured[li]["total"])
+        else:
+            x = pad + (block_w - measured[li]["total"]) / 2.0
         for wi, m in enumerate(row):
             width = measured[li]["widths"][wi]
 
